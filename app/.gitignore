@@ -1,0 +1,20 @@
+# Build outputs
+/build
+**/build
+
+# Debug
+*.apk
+*.ap_
+*.dex
+*.class
+
+# Generated files
+gen/
+out/
+
+# Unit test reports
+TEST*.xml
+test-result/
+
+# Local unit test configuration
+*.properties
