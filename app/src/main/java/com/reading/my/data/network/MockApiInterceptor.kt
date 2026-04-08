@@ -1,11 +1,11 @@
 package com.reading.my.data.network
 
 import android.util.Log
-import com.google.gson.Gson
 import com.reading.my.data.network.model.*
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 import okhttp3.*
 import okio.Buffer
-import java.io.IOException
 
 /**
  * Mock API 拦截器
@@ -36,7 +36,12 @@ class MockApiInterceptor : Interceptor {
         const val MOCK_REFRESH_TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.mock_refresh_token"
     }
 
-    private val gson = Gson()
+    // 使用 kotlinx.serialization.Json 替代 Gson
+    private val json = Json {
+        ignoreUnknownKeys = true
+        isLenient = true
+        encodeDefaults = true  // 编码默认值
+    }
 
     override fun intercept(chain: Interceptor.Chain): Response {
         if (!ENABLED) return chain.proceed(chain.request())
@@ -91,7 +96,7 @@ class MockApiInterceptor : Interceptor {
         }
 
         val request = try {
-            gson.fromJson(bodyString, SendEmailCodeRequest::class.java)
+            json.decodeFromString<SendEmailCodeRequest>(bodyString)
         } catch (e: Exception) {
             return createErrorResponse(10001, "参数格式错误")
         }
@@ -110,7 +115,7 @@ class MockApiInterceptor : Interceptor {
             timestamp = System.currentTimeMillis()
         )
 
-        return createSuccessResponse(gson.toJson(responseData))
+        return createSuccessResponse(json.encodeToString(responseData))
     }
 
     // ==================== 登录 ====================
@@ -121,7 +126,7 @@ class MockApiInterceptor : Interceptor {
         }
 
         val request = try {
-            gson.fromJson(bodyString, LoginRequest::class.java)
+            json.decodeFromString<LoginRequest>(bodyString)
         } catch (e: Exception) {
             return createErrorResponse(10001, "参数格式错误")
         }
@@ -167,7 +172,7 @@ class MockApiInterceptor : Interceptor {
             timestamp = System.currentTimeMillis()
         )
 
-        return createSuccessResponse(gson.toJson(responseData))
+        return createSuccessResponse(json.encodeToString(responseData))
     }
 
     // ==================== 刷新Token ====================
@@ -188,7 +193,7 @@ class MockApiInterceptor : Interceptor {
             timestamp = System.currentTimeMillis()
         )
 
-        return createSuccessResponse(gson.toJson(responseData))
+        return createSuccessResponse(json.encodeToString(responseData))
     }
 
     // ==================== 退出登录 ====================
@@ -203,7 +208,7 @@ class MockApiInterceptor : Interceptor {
             timestamp = System.currentTimeMillis()
         )
 
-        return createSuccessResponse(gson.toJson(responseData))
+        return createSuccessResponse(json.encodeToString(responseData))
     }
 
     // ==================== 获取用户信息 ====================
@@ -212,7 +217,7 @@ class MockApiInterceptor : Interceptor {
         val responseData = ApiResponse(
             code = 0,
             message = "success",
-            data = com.reading.my.data.network.model.UserInfo(
+            data = UserInfo(
                 id = MOCK_USER_ID,
                 email = MOCK_EMAIL,
                 username = MOCK_USERNAME,
@@ -223,7 +228,7 @@ class MockApiInterceptor : Interceptor {
             timestamp = System.currentTimeMillis()
         )
 
-        return createSuccessResponse(gson.toJson(responseData))
+        return createSuccessResponse(json.encodeToString(responseData))
     }
 
     // ==================== 响应构建工具 ====================
@@ -235,11 +240,11 @@ class MockApiInterceptor : Interceptor {
             .code(200)
             .message("OK")
             .header("Content-Type", "application/json")
-            .body(jsonBody.toResponseBody("application/json".toMediaType()))
+            .body(jsonBody.toRequestBody("application/json".toMediaType()))
     }
 
     private fun createErrorResponse(code: Int, message: String): Response.Builder {
-        val errorJson = gson.toJson(
+        val errorJson = json.encodeToString(
             ApiResponse<Nothing>(
                 code = code,
                 message = message,
@@ -254,6 +259,6 @@ class MockApiInterceptor : Interceptor {
             .code(200) // HTTP 200, 但业务code为错误码
             .message("OK")
             .header("Content-Type", "application/json")
-            .body(errorJson.toResponseBody("application/json".toMediaType()))
+            .body(errorJson.toRequestBody("application/json".toMediaType()))
     }
 }

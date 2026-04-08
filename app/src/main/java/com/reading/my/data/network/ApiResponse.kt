@@ -1,16 +1,18 @@
 package com.reading.my.data.network
 
-import com.google.gson.annotations.SerializedName
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
 
 /**
  * 统一API响应格式
  * 对应后端规范: { code, message, data, timestamp }
  */
+@Serializable
 data class ApiResponse<T>(
     val code: Int = 0,
     val message: String = "",
     val data: T? = null,
-    @SerializedName("timestamp")
+    @SerialName("timestamp")
     val timestamp: Long? = null
 ) {
     /** 判断是否成功 (code == 0) */
@@ -24,11 +26,12 @@ data class ApiResponse<T>(
 /**
  * 分页响应数据
  */
+@Serializable
 data class PageData<T>(
     val content: List<T> = emptyList(),
-    @SerializedName("totalElements")
+    @SerialName("totalElements")
     val totalElements: Int = 0,
-    @SerializedName("totalPages")
+    @SerialName("totalPages")
     val totalPages: Int = 0,
     val size: Int = 20,
     val number: Int = 1,
