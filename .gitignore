@@ -59,3 +59,5 @@ captures/
 *.log
 *.bak
 *~
+
+spec/
