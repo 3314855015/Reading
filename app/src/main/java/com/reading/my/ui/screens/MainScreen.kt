@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.LibraryBooks
 import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.LibraryBooks
 import androidx.compose.material.icons.filled.Person
@@ -40,6 +41,7 @@ import com.reading.my.ui.navigation.Screen
 import com.reading.my.ui.theme.BackgroundGray
 import com.reading.my.ui.theme.PrimaryOrange
 import com.reading.my.ui.screens.home.HomeScreen
+import com.reading.my.ui.screens.bookstore.BookstoreScreen
 
 /**
  * 主界面 - 底部导航容器
@@ -79,7 +81,16 @@ fun MainScreen(
         }
     ) { innerPadding ->
         // 内容区域：根据选中的路由显示对应页面
-        Box(modifier = Modifier.padding(innerPadding)) {
+        // 注意：BookstoreScreen 自行处理状态栏占位，故仅保留底部导航栏的 padding
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                 .padding(
+                     top = if (selectedRoute == Screen.Bookstore.route) 0.dp
+                     else innerPadding.calculateTopPadding(),
+                     bottom = innerPadding.calculateBottomPadding()
+                 )
+        ) {
             when (selectedRoute) {
                 Screen.Bookshelf.route -> BookshelfTab()
                 Screen.Bookstore.route -> BookstoreTab()
@@ -136,7 +147,7 @@ private fun BottomNavigationBar(
 }
 
 private fun BottomNavItem.iconVector(): ImageVector = when (this) {
-    is BottomNavItem.Bookshelf -> Icons.Default.LibraryBooks
+    is BottomNavItem.Bookshelf -> Icons.AutoMirrored.Filled.LibraryBooks
     is BottomNavItem.Bookstore -> Icons.Default.Search
     is BottomNavItem.Community -> Icons.Default.Groups
     is BottomNavItem.Profile -> Icons.Default.Person
@@ -174,17 +185,7 @@ private fun BookshelfTab() {
 
 @Composable
 private fun BookstoreTab() {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(BackgroundGray),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Spacer(modifier = Modifier.height(60.dp))
-        Text(text = "📖 书库", fontSize = 22.sp, fontWeight = FontWeight.Bold, color = Color(0xFF333333))
-        Spacer(modifier = Modifier.height(16.dp))
-        PlaceholderContent("搜索 · 热门 · 分类 · 书籍")
-    }
+    BookstoreScreen()
 }
 
 // ==================== 同好/圈子页 ====================

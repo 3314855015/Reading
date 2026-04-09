@@ -63,7 +63,7 @@ fun LoginScreen(
         Spacer(modifier = Modifier.height(80.dp))
 
         Text(
-            text = "📚 阅读APP",
+            text = "📚 Reading",
             fontSize = 28.sp,
             fontWeight = FontWeight.Bold,
             color = TextPrimary
