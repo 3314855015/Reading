@@ -42,19 +42,15 @@ import com.reading.my.ui.theme.TextSecondary
 import kotlinx.coroutines.launch
 
 /**
- * 首页
+ * 书架首页内容（嵌入 MainScreen 的书架 Tab 中）
  *
  * 包含：
- *   - 欢迎区域（显示登录成功状态）
+ *   - 欢迎区域
+ *   - 功能入口卡片
  *   - ★ 测试入口面板 ★ （后端接入后删除此区域即可）
  */
 @Composable
-fun HomeScreen(
-    onNavigateToBookshelf: () -> Unit = {},
-    onNavigateToSearch: () -> Unit = {},
-    onNavigateToProfile: () -> Unit = {},
-    onNavigateToReader: (Long) -> Unit = {}
-) {
+fun HomeScreen() {
     // ============================================================
     // ★★★ 测试入口相关状态 ★★★  ← 后端接入后，删除此区块及下方 TestEntryPanel 即可
     // ============================================================
@@ -92,16 +88,17 @@ fun HomeScreen(
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // 功能入口卡片（占位）
+            // 功能入口卡片（占位 - 实际由MainScreen的底部导航替代）
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp),
                 horizontalArrangement = Arrangement.SpaceEvenly
             ) {
-                FeatureCard("书架", "📚") { onNavigateToBookshelf() }
-                FeatureCard("搜索", "🔍") { onNavigateToSearch() }
-                FeatureCard("我的", "👤") { onNavigateToProfile() }
+                FeatureCard("书架", "📚") {}
+                FeatureCard("书库", "🔍") {}
+                FeatureCard("同好", "👥") {}
+                FeatureCard("我的", "👤") {}
             }
 
             Spacer(modifier = Modifier.height(32.dp))
@@ -206,15 +203,10 @@ private fun FeatureCard(title: String, icon: String, onClick: () -> Unit) {
 /**
  * 可删除的测试入口组件
  *
- * 用于在首页快速测试 Mock API 的发送验证码和登录流程。
- * 后端接入真实API后，删除此 Composable 函数即可。
- *
  * 删除步骤:
  *   1. 删除 TestEntryPanel 函数
  *   2. 删除 HomeScreen 中 TestEntryPanel() 调用处及其上方的所有状态变量声明
  *   3. 删除 HomeScreen 中未使用的 import（MockApiInterceptor 等）
- *   4. 在 MockApiInterceptor 中设置 ENABLED = false
- *   5. 从 NetworkModule 中移除 addInterceptor(MockApiInterceptor())
  */
 @Composable
 private fun TestEntryPanel(
@@ -247,19 +239,9 @@ private fun TestEntryPanel(
             modifier = Modifier.padding(16.dp)
         ) {
             // 标题栏
-            Row(
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "🧪 测试入口",
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = PrimaryOrange
-                )
-
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(text = "🧪 测试入口", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = PrimaryOrange)
                 Spacer(modifier = Modifier.weight(1f))
-
-                // Mock状态指示
                 Text(
                     text = if (mockEnabled) "[Mock模式]" else "[真实API]",
                     fontSize = 11.sp,
@@ -273,30 +255,13 @@ private fun TestEntryPanel(
 
             Spacer(modifier = Modifier.height(4.dp))
 
-            Text(
-                text = "后端接入后删除此面板即可切换到真实接口",
-                fontSize = 11.sp,
-                color = TextSecondary.copy(alpha = 0.7f)
-            )
+            Text(text = "后端接入后删除此面板即可切换到真实接口", fontSize = 11.sp, color = TextSecondary.copy(alpha = 0.7f))
 
             Divider(modifier = Modifier.padding(vertical = 12.dp))
 
-            // 邮箱输入提示
-            Text(
-                text = "测试邮箱: $email",
-                fontSize = 13.sp,
-                color = TextPrimary
-            )
-
+            Text(text = "测试邮箱: $email", fontSize = 13.sp, color = TextPrimary)
             Spacer(modifier = Modifier.height(6.dp))
-
-            // 验证码输入提示
-            Text(
-                text = "测试验证码: $code  (任意6位数字)",
-                fontSize = 13.sp,
-                color = TextPrimary
-            )
-
+            Text(text = "测试验证码: $code  (任意6位数字)", fontSize = 13.sp, color = TextPrimary)
             Spacer(modifier = Modifier.height(12.dp))
 
             // 操作按钮行
@@ -309,20 +274,10 @@ private fun TestEntryPanel(
                     enabled = !isLoading,
                     modifier = Modifier.weight(1f).height(38.dp),
                     shape = RoundedCornerShape(8.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = PrimaryOrange,
-                        disabledContainerColor = PrimaryOrange.copy(alpha = 0.5f)
-                    )
+                    colors = ButtonDefaults.buttonColors(containerColor = PrimaryOrange, disabledContainerColor = PrimaryOrange.copy(alpha = 0.5f))
                 ) {
-                    if (isLoading) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(16.dp),
-                            color = Color.White,
-                            strokeWidth = 2.dp
-                        )
-                    } else {
-                        Text("发送验证码", fontSize = 13.sp)
-                    }
+                    if (isLoading) CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color.White, strokeWidth = 2.dp)
+                    else Text("发送验证码", fontSize = 13.sp)
                 }
 
                 Button(
@@ -330,10 +285,7 @@ private fun TestEntryPanel(
                     enabled = !isLoading && code.length == 6,
                     modifier = Modifier.weight(1f).height(38.dp),
                     shape = RoundedCornerShape(8.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = primaryOrangeDark,
-                        disabledContainerColor = primaryOrangeDark.copy(alpha = 0.5f)
-                    )
+                    colors = ButtonDefaults.buttonColors(containerColor = primaryOrangeDark, disabledContainerColor = primaryOrangeDark.copy(alpha = 0.5f))
                 ) {
                     Text("执行登录", fontSize = 13.sp)
                 }
@@ -343,20 +295,14 @@ private fun TestEntryPanel(
                         onClick = onClearResult,
                         modifier = Modifier.height(38.dp),
                         shape = RoundedCornerShape(8.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = Color.Gray,
-                            contentColor = Color.White
-                        )
-                    ) {
-                        Text("清除", fontSize = 13.sp)
-                    }
+                        colors = ButtonDefaults.buttonColors(containerColor = Color.Gray, contentColor = Color.White)
+                    ) { Text("清除", fontSize = 13.sp) }
                 }
             }
 
             // 结果显示区
             if (resultText != null) {
                 Spacer(modifier = Modifier.height(12.dp))
-
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -364,22 +310,13 @@ private fun TestEntryPanel(
                         .background(Color.Black.copy(alpha = 0.05f))
                         .padding(12.dp)
                 ) {
-                    Text(
-                        text = resultText,
-                        fontSize = 11.sp,
-                        color = Color(0xFF333333),
-                        lineHeight = 18.sp
-                    )
+                    Text(text = resultText, fontSize = 11.sp, color = Color(0xFF333333), lineHeight = 18.sp)
                 }
             }
 
             // 使用说明
             Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = "特殊验证码: 000001→过期 | 000002→已用 | 00003→封禁 | .new邮箱→新用户",
-                fontSize = 10.sp,
-                color = textHint
-            )
+            Text(text = "特殊验证码: 000001→过期 | 000002→已用 | 00003→封禁 | .new邮箱→新用户", fontSize = 10.sp, color = textHint)
         }
     }
 }
