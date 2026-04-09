@@ -5,6 +5,9 @@ import com.reading.my.data.network.model.*
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import okhttp3.*
+import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.ResponseBody.Companion.toResponseBody
+import okhttp3.MediaType.Companion.toMediaType
 import okio.Buffer
 
 /**
@@ -240,7 +243,7 @@ class MockApiInterceptor : Interceptor {
             .code(200)
             .message("OK")
             .header("Content-Type", "application/json")
-            .body(jsonBody.toRequestBody("application/json".toMediaType()))
+            .body(jsonBody.toResponseBody("application/json".toMediaType()))
     }
 
     private fun createErrorResponse(code: Int, message: String): Response.Builder {
@@ -259,6 +262,6 @@ class MockApiInterceptor : Interceptor {
             .code(200) // HTTP 200, 但业务code为错误码
             .message("OK")
             .header("Content-Type", "application/json")
-            .body(errorJson.toRequestBody("application/json".toMediaType()))
+            .body(errorJson.toResponseBody("application/json".toMediaType()))
     }
 }

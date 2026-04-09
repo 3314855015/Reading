@@ -3,6 +3,7 @@ package com.reading.my.ui.screens.login
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.reading.my.data.local.UserSessionManager
 import com.reading.my.data.network.ApiResponse
 import com.reading.my.data.network.ApiService
 import com.reading.my.data.network.model.LoginRequest
@@ -21,10 +22,13 @@ import javax.inject.Inject
  * 
  * 通过 ApiService 发起真实网络请求（当前由 MockApiInterceptor 拦截返回模拟数据）
  * 后端就绪后，关闭 MockApiInterceptor.ENABLED = false 即可无缝切换
+ *
+ * 登录成功后自动保存 Session 到 DataStore（7天有效期）
  */
 @HiltViewModel
 class LoginViewModel @Inject constructor(
-    private val apiService: ApiService
+    private val apiService: ApiService,
+    private val sessionManager: UserSessionManager  // ★ 新增：会话管理
 ) : ViewModel() {
 
     companion object {
@@ -174,6 +178,16 @@ class LoginViewModel @Inject constructor(
                 if (response.isSuccess() && response.data != null) {
                     val loginData = response.data!!
                     Log.i(TAG, "[API] ✅ 登录成功! userId=${loginData.userId}, username=${loginData.username}, isNewUser=${loginData.isNewUser}")
+
+                    // ★ 保存登录会话到 DataStore（7天有效期）
+                    sessionManager.saveSession(
+                        userId = loginData.userId,
+                        email = loginData.email,
+                        username = loginData.username,
+                        avatar = loginData.avatar,
+                        accessToken = loginData.accessToken,
+                        refreshToken = loginData.refreshToken
+                    )
 
                     _uiState.update {
                         it.copy(

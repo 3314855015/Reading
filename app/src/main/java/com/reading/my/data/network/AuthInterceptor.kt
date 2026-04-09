@@ -1,7 +1,6 @@
 package com.reading.my.data.network
 
 import android.content.Context
-import com.google.gson.Gson
 import okhttp3.Interceptor
 import okhttp3.Response
 
