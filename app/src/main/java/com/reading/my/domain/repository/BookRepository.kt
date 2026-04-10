@@ -1,8 +1,8 @@
 package com.reading.my.domain.repository
 
+import android.net.Uri
 import com.reading.my.domain.model.Book
 import com.reading.my.domain.model.Chapter
-import com.reading.my.domain.model.ParseResult
 import kotlinx.coroutines.flow.Flow
 
 /**
@@ -29,17 +29,22 @@ interface BookRepository {
     /**
      * 解析并导入一本 docx 文件
      *
-     * 完整流程：
-     * 1. DocxParser 解析文件 → 得到 ParseResult
-     * 2. 写入 local_book 表（元数据）
-     * 3. 批量写入 chapter 表（章节内容）
-     * 4. 返回导入后的 Book 对象（含自增ID）
-     *
      * @param filePath 文件绝对路径
      * @param authorName 作者名
      * @return 导入成功后的 Book；失败返回 null
      */
     suspend fun importBook(filePath: String, authorName: String = "阅读者"): Book?
+
+    /**
+     * 从 SAF 文件选择器返回的 URI 解析并导入 docx 文件
+     *
+     * 流程：读取URI内容 → 复制到App缓存目录 → DocxParser解析 → 存入DB
+     *
+     * @param uri SAF 返回的文件 URI
+     * @param authorName 作者名
+     * @return 导入成功后的 Book；失败返回 null
+     */
+    suspend fun importFromUri(uri: Uri, authorName: String = "阅读者"): Book?
 
     // ==================== 章节 ====================
 

@@ -1,6 +1,9 @@
 package com.reading.my.data.repository
 
+import android.content.Context
+import android.net.Uri
 import android.util.Log
+import android.util.Log.e
 import com.reading.my.data.local.database.dao.ChapterDao
 import com.reading.my.data.local.database.dao.LocalBookDao
 import com.reading.my.data.local.database.entity.ChapterEntity
@@ -10,6 +13,7 @@ import com.reading.my.domain.model.Book
 import com.reading.my.domain.model.BookSource
 import com.reading.my.domain.model.Chapter
 import com.reading.my.domain.repository.BookRepository
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import java.io.File
@@ -24,12 +28,16 @@ import javax.inject.Singleton
  */
 @Singleton
 class BookRepositoryImpl @Inject constructor(
+    @ApplicationContext private val context: Context,
     private val localBookDao: LocalBookDao,
     private val chapterDao: ChapterDao,
 ) : BookRepository {
 
     companion object {
         const val TAG = "BookRepo"
+
+        /** App 内部缓存目录（存放从 URI 复制的文件） */
+        private const val IMPORT_CACHE_DIR = "imported_books"
     }
 
     // ==================== 书籍 CRUD ====================
@@ -95,6 +103,79 @@ class BookRepositoryImpl @Inject constructor(
         // 4. 返回完整的 Book 对象
         return getBookById(bookId)
     }
+
+    /**
+     * 从 SAF URI 导入文件（核心：复制到 App 内部缓存 → 再解析）
+     *
+     * 为什么需要复制？
+     * - SAF URI 可能是临时授权的，App 重启后可能失效
+     * - DocxParser 需要 File 对象（ZIP 流读取）
+     * - 复制到内部存储后，数据完全由 App 控制，无权限问题
+     */
+    override suspend fun importFromUri(uri: Uri, authorName: String): Book? {
+        return try {
+            Log.i(TAG, "开始从 URI 导入: $uri")
+
+            // 1. 从 URI 读取内容 → 复制到 App 内部缓存目录
+            val cacheFile = copyUriToCache(uri)
+                ?: run { Log.e(TAG, "URI 复制失败"); null }
+                ?: return null
+
+            Log.i(TAG, "文件已复制到: ${cacheFile.absolutePath} (${cacheFile.length()} bytes)")
+
+            // 2. 用已有的 importBook 方法解析并存入 DB
+            val book = importBook(cacheFile.absolutePath, authorName)
+
+            if (book != null) {
+                // 3. 解析成功后可以保留缓存文件（作为原始备份），也可以删除
+                Log.i(TAG, "URI 导入完成! bookId=${book.id}")
+            }
+
+            book
+        } catch (e: Exception) {
+            Log.e(TAG, "从 URI 导入异常", e)
+            null
+        }
+    }
+
+    /**
+     * 将 SAF URI 的文件内容复制到 App 内部缓存目录
+     *
+     * 使用 ContentResolver 从 URI 读取字节流，
+     * 写入 context.cacheDir/imported_books/ 下。
+     */
+    private fun copyUriToCache(uri: Uri): File? {
+        return try {
+            // 创建导入缓存子目录
+            val cacheDir = File(context.cacheDir, IMPORT_CACHE_DIR).apply { mkdirs() }
+
+            // 用原文件名作为缓存文件名（避免重名冲突加时间戳）
+            val fileName = getFileNameFromUri(uri) ?: "${System.currentTimeMillis()}.docx"
+            val destFile = File(cacheDir, fileName)
+
+            context.contentResolver.openInputStream(uri)?.use { input ->
+                destFile.outputStream().use { output ->
+                    input.copyTo(output)
+                }
+            } ?: run {
+                Log.e(TAG, "无法打开 URI 输入流: $uri")
+                return null
+            }
+
+            destFile
+        } catch (e: Exception) {
+            Log.e(TAG, "复制 URI 到缓存失败", e)
+            null
+        }
+    }
+
+    /** 尝试从 URI 获取显示名称，失败则返回 null */
+    private fun getFileNameFromUri(uri: Uri): String? = runCatching {
+        context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+            val nameIndex = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+            if (cursor.moveToFirst() && nameIndex >= 0) cursor.getString(nameIndex) else null
+        }
+    }.getOrNull()
 
     // ==================== 章节 ====================
 

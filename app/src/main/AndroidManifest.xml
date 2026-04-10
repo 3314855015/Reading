@@ -2,6 +2,10 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
+    <!-- 文件读取权限（SAF选择器为主，权限为辅助） -->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+    <uses-permission android:name="android.permission.READ_MEDIA_DOCUMENTS" />
+
     <application
         android:name=".ReadingApplication"
         android:allowBackup="true"

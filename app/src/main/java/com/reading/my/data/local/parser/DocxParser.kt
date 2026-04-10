@@ -57,6 +57,7 @@ object DocxParser {
                 ?: run { Log.e(TAG, "未找到 word/document.xml"); null }
                 ?: return null
 
+            Log.d(TAG, "document.xml 大小: ${documentXml.length} 字符, 前200字符: ${documentXml.take(200)}")
             parseDocumentXml(documentXml, file.nameWithoutExtension, authorName)
         } catch (e: Exception) {
             Log.e(TAG, "解析失败", e)
@@ -114,6 +115,8 @@ object DocxParser {
                 else -> ParaData(isHeading = false, headingLevel = 0, text = text)
             }
         }.filter { it.text.isNotBlank() }
+
+        Log.d(TAG, "原始段落=${rawParagraphs.size}, 过滤后有效段落=${paragraphs.size}")
 
         if (paragraphs.isEmpty()) {
             Log.w(TAG, "未提取到任何有效段落")
@@ -201,13 +204,22 @@ object DocxParser {
         val results = mutableListOf<String>()
         var start = 0
         while (true) {
-            val openIdx = xml.indexOf("<w:p ", start)
+            val openIdx = xml.indexOf("<w:p", start)
             if (openIdx == -1) break
-            val closeIdx = xml.indexOf("</w:p>", openIdx)
+            // 找到 > 作为段落标签的结束位置（处理 <w:p ...> 和 <w:p> 两种格式）
+            val tagEnd = xml.indexOf(">", openIdx)
+            if (tagEnd == -1) break
+            // 跳过自闭合 <w:p/>
+            if (xml[tagEnd - 1] == '/') {
+                start = tagEnd + 1
+                continue
+            }
+            val closeIdx = xml.indexOf("</w:p>", tagEnd)
             if (closeIdx == -1) break
             results.add(xml.substring(openIdx, closeIdx + "</w:p>".length))
             start = closeIdx + "</w:p>".length
         }
+        Log.d(TAG, "extractParagraphs: 从 XML 中提取到 ${results.size} 个 <w:p> 段落")
         return results
     }
 
