@@ -43,6 +43,7 @@ import com.reading.my.ui.theme.PrimaryOrange
 import com.reading.my.ui.screens.home.HomeScreen
 import com.reading.my.ui.screens.bookstore.BookstoreScreen
 import com.reading.my.ui.screens.bookshelf.BookshelfScreen
+import com.reading.my.ui.screens.bookshelf.BookDetailScreen
 
 /**
  * 主界面 - 底部导航容器
@@ -66,6 +67,9 @@ fun MainScreen(
 ) {
     val items = BottomNavItem.tabs
     var selectedRoute by remember { mutableStateOf(Screen.Bookshelf.route) }
+    
+    // 书籍详情导航状态
+    var selectedBookId by remember { mutableStateOf<Long?>(null) }
 
     Scaffold(
         modifier = Modifier.fillMaxSize(),
@@ -92,11 +96,20 @@ fun MainScreen(
                      bottom = innerPadding.calculateBottomPadding()
                  )
         ) {
-            when (selectedRoute) {
-                Screen.Bookshelf.route -> BookshelfTab()
-                Screen.Bookstore.route -> BookstoreTab()
-                Screen.Community.route -> CommunityTab()
-                Screen.Profile.route -> ProfileTab(userAvatarUrl = userAvatarUrl)
+            when {
+                // 书籍详情页（覆盖在书架之上）
+                selectedBookId != null -> {
+                    BookDetailScreen(
+                        bookId = selectedBookId!!,
+                        onBack = { selectedBookId = null }
+                    )
+                }
+                selectedRoute == Screen.Bookshelf.route -> BookshelfTab(
+                    onNavigateToDetail = { bookId -> selectedBookId = bookId }
+                )
+                selectedRoute == Screen.Bookstore.route -> BookstoreTab()
+                selectedRoute == Screen.Community.route -> CommunityTab()
+                selectedRoute == Screen.Profile.route -> ProfileTab(userAvatarUrl = userAvatarUrl)
             }
         }
     }
@@ -177,8 +190,8 @@ private fun ProfileAvatarPlaceholder(username: String) {
 
 /** 书架页 - 默认首页（书架页面） */
 @Composable
-private fun BookshelfTab() {
-    BookshelfScreen()
+private fun BookshelfTab(onNavigateToDetail: (Long) -> Unit = {}) {
+    BookshelfScreen(onNavigateToDetail = onNavigateToDetail)
 }
 
 // ==================== 书库/发现页 ====================
