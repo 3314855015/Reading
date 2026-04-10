@@ -85,7 +85,6 @@ fun BookstoreScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(pageBackgroundColor)   // ← 颜色应延伸到状态栏
-            .statusBarsPadding()  
     ) {
         // ===== A + B 组件：类型切换栏 + 搜索框 =====
         TypeAndSearchArea(

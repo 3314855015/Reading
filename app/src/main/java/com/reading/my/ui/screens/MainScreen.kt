@@ -42,6 +42,7 @@ import com.reading.my.ui.theme.BackgroundGray
 import com.reading.my.ui.theme.PrimaryOrange
 import com.reading.my.ui.screens.home.HomeScreen
 import com.reading.my.ui.screens.bookstore.BookstoreScreen
+import com.reading.my.ui.screens.bookshelf.BookshelfScreen
 
 /**
  * 主界面 - 底部导航容器
@@ -174,11 +175,10 @@ private fun ProfileAvatarPlaceholder(username: String) {
 
 // ==================== 书架页（默认首页）====================
 
-/** 书架页 - 默认首页（包含测试入口面板） */
+/** 书架页 - 默认首页（书架页面） */
 @Composable
 private fun BookshelfTab() {
-    // 书架核心内容（含测试入口）
-    HomeScreen()
+    BookshelfScreen()
 }
 
 // ==================== 书库/发现页 ====================
