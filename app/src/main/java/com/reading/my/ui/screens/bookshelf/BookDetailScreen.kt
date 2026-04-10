@@ -22,8 +22,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -35,7 +34,6 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.reading.my.domain.model.Book
 import com.reading.my.domain.model.Chapter
-import com.reading.my.domain.repository.BookRepository
 import com.reading.my.ui.theme.BackgroundGray
 import com.reading.my.ui.theme.DividerColor
 import com.reading.my.ui.theme.PrimaryOrange
@@ -43,11 +41,6 @@ import com.reading.my.ui.theme.TextDisabled
 import com.reading.my.ui.theme.TextHint
 import com.reading.my.ui.theme.TextPrimary
 import com.reading.my.ui.theme.TextSecondary
-import dagger.hilt.android.lifecycle.HiltViewModel
-import androidx.lifecycle.ViewModel
-import androidx.lifecycle.viewModelScope
-import javax.inject.Inject
-import kotlinx.coroutines.launch
 
 /**
  * 书籍详情页
@@ -68,7 +61,7 @@ fun BookDetailScreen(
         viewModel.loadBookDetail(bookId)
     }
 
-    val uiState = viewModel.uiState
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
     Box(
         modifier = Modifier
@@ -309,47 +302,3 @@ private fun ChapterContentView(
     }
 }
 
-// ==================== ViewModel ====================
-
-data class BookDetailUiState(
-    val isLoading: Boolean = true,
-    val book: Book? = null,
-    val chapters: List<Chapter> = emptyList(),
-    val selectedChapter: Chapter? = null,
-    val error: String? = null,
-)
-
-@HiltViewModel
-class BookDetailViewModel @Inject constructor(
-    private val bookRepository: BookRepository,
-) : ViewModel() {
-
-    var uiState by mutableStateOf(BookDetailUiState())
-        private set
-
-    fun loadBookDetail(bookId: Long) {
-        viewModelScope.launch {
-            uiState = uiState.copy(isLoading = true, error = null)
-            try {
-                val book = bookRepository.getBookById(bookId)
-                val chapters = if (book != null) bookRepository.getChaptersByBookId(bookId) else emptyList()
-
-                if (book == null) {
-                    uiState = uiState.copy(isLoading = false, error = "书籍不存在")
-                } else {
-                    uiState = uiState.copy(
-                        isLoading = false,
-                        book = book,
-                        chapters = chapters,
-                    )
-                }
-            } catch (e: Exception) {
-                uiState = uiState.copy(isLoading = false, error = e.message ?: "未知错误")
-            }
-        }
-    }
-
-    fun selectChapter(chapter: Chapter) {
-        uiState = uiState.copy(selectedChapter = chapter)
-    }
-}

@@ -1,6 +1,8 @@
 package com.reading.my.ui.screens.bookshelf
 
-import android.util.Log
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -28,6 +30,8 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -36,6 +40,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.style.TextAlign
@@ -44,38 +49,41 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.reading.my.domain.model.Book
-import com.reading.my.domain.repository.BookRepository
 import com.reading.my.ui.theme.BackgroundGray
 import com.reading.my.ui.theme.PrimaryOrange
 import com.reading.my.ui.theme.TextHint
 import com.reading.my.ui.theme.TextPrimary
 import com.reading.my.ui.theme.TextSecondary
-import dagger.hilt.android.lifecycle.HiltViewModel
-import androidx.lifecycle.ViewModel
-import androidx.lifecycle.viewModelScope
-import kotlinx.coroutines.flow.collectLatest
-import kotlinx.coroutines.launch
-import javax.inject.Inject
 
 /**
- * 书架页面（V2 — 接入真实数据）
+ * 书架页面（V3 — 真实文件选择 + 真实数据）
  *
- * 数据来源：BookRepository → Room DB → UI
- * 导入流程：点击"导入小说" → DocxParser 解析测试文件 → 存DB → 刷新列表
+ * 纯 UI 层：Composable + 布局 + 用户交互回调
+ * 业务逻辑委托给 BookshelfViewModel（独立文件）
  */
 @Composable
 fun BookshelfScreen(
     onNavigateToDetail: (Long) -> Unit = {},
     viewModel: BookshelfViewModel = hiltViewModel(),
 ) {
+    val context = LocalContext.current
     var selectedTagIndex by remember { mutableIntStateOf(0) }
+
+    // ===== SAF 文件选择器（docx 格式过滤） =====
+    val filePicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            viewModel.importFromUri(uri)
+        }
+    }
 
     // 监听书籍列表数据
     LaunchedEffect(Unit) {
         viewModel.loadBooks()
     }
 
-    val uiState = viewModel.uiState
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
     Column(
         modifier = Modifier
@@ -84,7 +92,9 @@ fun BookshelfScreen(
     ) {
         // ===== 菜单栏：标题 + 下拉菜单 =====
         ShelfHeaderBar(
-            onImportTest = { viewModel.importTestDocx() },
+            onImportDocx = {
+                filePicker.launch(arrayOf("application/vnd.openxmlformats-officedocument.wordprocessingml.document"))
+            },
             onClearCache = { viewModel.clearAllBooks() }
         )
 
@@ -107,14 +117,14 @@ fun BookshelfScreen(
                 }
             }
             uiState.books.isEmpty() -> {
-                EmptyShelfView(onImport = { viewModel.importTestDocx() })
+                EmptyShelfView(onImport = {
+                    filePicker.launch(arrayOf("application/vnd.openxmlformats-officedocument.wordprocessingml.document"))
+                })
             }
             else -> {
                 ShelfBookGrid(
                     books = uiState.books,
                     onBookClick = { book ->
-                        // TODO: 后续导航到 BookDetailScreen
-                        Log.d("Bookshelf", "点击书籍: ${book.title} (id=${book.id})")
                         if (book.id > 0L) onNavigateToDetail(book.id)
                     },
                 )
@@ -131,70 +141,21 @@ fun BookshelfScreen(
                 modifier = Modifier.padding(horizontal = 20.dp)
             )
         }
-    }
-}
 
-// ==================== UI State & ViewModel ====================
-
-data class BookshelfUiState(
-    val isLoading: Boolean = false,
-    val books: List<Book> = emptyList(),
-    val importMessage: String? = null,
-)
-
-@HiltViewModel
-class BookshelfViewModel @Inject constructor(
-    private val bookRepository: BookRepository,
-) : ViewModel() {
-
-    var uiState by mutableStateOf(BookshelfUiState())
-        private set
-
-    fun loadBooks() {
-        viewModelScope.launch {
-            bookRepository.observeAllBooks().collectLatest { books ->
-                uiState = uiState.copy(isLoading = false, books = books)
+        // 导入中状态
+        if (uiState.isImporting) {
+            Row(
+                modifier = Modifier.padding(horizontal = 20.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(14.dp),
+                    color = PrimaryOrange,
+                    strokeWidth = 2.dp
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(text = "正在解析文件...", fontSize = 12.sp, color = TextHint)
             }
-        }
-    }
-
-    /**
-     * 导入测试 docx 文件（模拟用户选择）
-     *
-     * 使用项目根目录下的测试文件: 测试docx导入渲染/_1772516010073.docx
-     */
-    fun importTestDocx() {
-        viewModelScope.launch {
-            uiState = uiState.copy(importMessage = null)
-
-            // ★ 模拟：直接使用本地测试文件路径 ★
-            // TODO: 正式版这里应该打开系统文件选择器
-            val testFilePath = "/storage/emulated/0/测试docx导入渲染/_1772516010073.docx"
-
-            try {
-                Log.i("Bookshelf", "开始模拟导入: $testFilePath")
-
-                val book = bookRepository.importBook(testFilePath, authorName = "阅读者")
-
-                if (book != null) {
-                    uiState = uiState.copy(
-                        importMessage = "✅ 导入成功：「${book.title}」${book.chapterCount}章"
-                    )
-                    Log.i("Bookshelf", "导入成功: id=${book.id}, title=${book.title}")
-                } else {
-                    uiState = uiState.copy(importMessage = "❌ 解析失败（请确认测试文件存在）")
-                }
-            } catch (e: Exception) {
-                uiState = uiState.copy(importMessage = "❌ 异常: ${e.message}")
-                Log.e("Bookshelf", "导入异常", e)
-            }
-        }
-    }
-
-    fun clearAllBooks() {
-        viewModelScope.launch {
-            bookRepository.deleteAllBooks()
-            uiState = uiState.copy(importMessage = "🗑 已清空全部书籍")
         }
     }
 }
@@ -203,7 +164,7 @@ class BookshelfViewModel @Inject constructor(
 
 @Composable
 private fun ShelfHeaderBar(
-    onImportTest: () -> Unit,
+    onImportDocx: () -> Unit,
     onClearCache: () -> Unit,
 ) {
     var showMenu by remember { mutableStateOf(false) }
@@ -231,8 +192,8 @@ private fun ShelfHeaderBar(
                 modifier = Modifier.background(Color.White)
             ) {
                 DropdownMenuItem(
-                    text = { Text("导入小说（测试）", fontSize = 14.sp) },
-                    onClick = { showMenu = false; onImportTest() }
+                    text = { Text("导入小说", fontSize = 14.sp) },
+                    onClick = { showMenu = false; onImportDocx() }
                 )
                 DropdownMenuItem(
                     text = { Text("清空缓存", fontSize = 14.sp) },
@@ -299,10 +260,10 @@ private fun EmptyShelfView(onImport: () -> Unit) {
         Spacer(modifier = Modifier.height(12.dp))
         Text(text = "书架空空如也", fontSize = 16.sp, fontWeight = FontWeight.Medium, color = TextPrimary)
         Spacer(modifier = Modifier.height(6.dp))
-        Text(text = "点击「更多→导入小说」来添加你的第一本书", fontSize = 13.sp, color = TextHint)
+        Text(text = "点击下方按钮导入你的 docx 小说文件", fontSize = 13.sp, color = TextHint)
         Spacer(modifier = Modifier.height(20.dp))
         Text(
-            text = "+ 导入测试文件",
+            text = "+ 选择 docx 文件",
             fontSize = 14.sp,
             color = Color.White,
             fontWeight = FontWeight.Medium,
