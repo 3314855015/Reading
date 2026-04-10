@@ -1,0 +1,59 @@
+package com.reading.my.domain.repository
+
+import com.reading.my.domain.model.Book
+import com.reading.my.domain.model.Chapter
+import com.reading.my.domain.model.ParseResult
+import kotlinx.coroutines.flow.Flow
+
+/**
+ * 书籍仓储接口
+ *
+ * 遵循 Clean Architecture 原则，定义在 domain 层。
+ * 实现在 data 层通过 Room + DocxParser 完成。
+ */
+interface BookRepository {
+
+    // ==================== 书籍 CRUD ====================
+
+    /** 观察所有本地书籍列表（Flow形式，数据变化时自动通知UI） */
+    fun observeAllBooks(): Flow<List<Book>>
+
+    /** 根据ID获取书籍详情 */
+    suspend fun getBookById(bookId: Long): Book?
+
+    /** 搜索书籍（按标题模糊匹配） */
+    suspend fun searchBooks(keyword: String): List<Book>
+
+    // ==================== 导入流程 ====================
+
+    /**
+     * 解析并导入一本 docx 文件
+     *
+     * 完整流程：
+     * 1. DocxParser 解析文件 → 得到 ParseResult
+     * 2. 写入 local_book 表（元数据）
+     * 3. 批量写入 chapter 表（章节内容）
+     * 4. 返回导入后的 Book 对象（含自增ID）
+     *
+     * @param filePath 文件绝对路径
+     * @param authorName 作者名
+     * @return 导入成功后的 Book；失败返回 null
+     */
+    suspend fun importBook(filePath: String, authorName: String = "阅读者"): Book?
+
+    // ==================== 章节 ====================
+
+    /** 获取某本书的所有章节 */
+    suspend fun getChaptersByBookId(bookId: Long): List<Chapter>
+
+    /** 获取单个章节 */
+    suspend fun getChapter(bookId: Long, chapterIndex: Int): Chapter?
+
+    // ==================== 删除 ====================
+
+    /** 删除一本书及其所有章节 */
+    suspend fun deleteBook(bookId: Long)
+
+    /** 清空所有本地书籍 */
+    suspend fun deleteAllBooks()
+}
