@@ -258,26 +258,17 @@ object DocxParser {
     /**
      * 从段落列表中提取文档书名
      *
-     * 策略：
-     * 1. 查找前5个非空段落中的短文本（通常是文档标题/书名）
-     * 2. 排除已被识别为章节标题的段落
-     * 3. 排除以全角缩进开头的正文段落
-     * 4. 若未找到则回退到 fallbackTitle（文件名）
+     * 策略：取第一个非空段落作为书名（docx 小说通常第一段就是书名）。
+     * 若第一段太长（>20字），则回退到 fallbackTitle（文件名）。
      */
     private fun extractDocumentTitle(paragraphs: List<ParaData>, fallbackTitle: String): String {
-        val candidateParagraphs = paragraphs
-            .filter { !it.isHeading }
-            .take(5)
-
-        for (para in candidateParagraphs) {
-            val text = para.text.trim()
-            // 书名特征：较短（通常 <= 15字）、不含全角缩进开头（不是正文段落）
-            if (text.length in 2..15 && !text.startsWith("　") && !text.startsWith("\u3000")) {
-                Log.d(TAG, "检测到文档标题: '$text'")
-                return text
-            }
+        val firstText = paragraphs.firstOrNull()?.text?.trim()
+        return if (!firstText.isNullOrBlank() && firstText.length <= 20) {
+            Log.d(TAG, "检测到文档标题: '$firstText'")
+            firstText
+        } else {
+            fallbackTitle
         }
-        return fallbackTitle
     }
 
     // ==================== XML 轻量提取工具 ====================

@@ -314,7 +314,7 @@ private fun ShelfBookCard(book: Book, onClick: () -> Unit) {
             contentAlignment = Alignment.Center
         ) {
             Text(
-                text = "📖",
+                text = "",
                 fontSize = 32.sp
             )
         }
@@ -324,7 +324,7 @@ private fun ShelfBookCard(book: Book, onClick: () -> Unit) {
         // ===== 书名（最多2行，约6字/行） =====
         Text(
             text = book.title.ifBlank { "未命名" },
-            fontSize = 14.sp,
+            fontSize = 15.sp,
             fontWeight = FontWeight.Medium,
             color = TextPrimary,
             maxLines = 2,
@@ -341,7 +341,11 @@ private fun ShelfBookCard(book: Book, onClick: () -> Unit) {
             fontSize = 12.sp,
             color = TextHint.copy(alpha = 0.6f),
             maxLines = 1,
-            overflow = TextOverflow.Ellipsis
+            overflow = TextOverflow.Ellipsis,
+            textAlign = TextAlign.Center,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 8.dp)
         )
     }
 }
