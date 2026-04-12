@@ -7,6 +7,7 @@ import java.io.BufferedInputStream
 import java.io.File
 import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
+import kotlin.text.RegexOption
 
 /**
  * DOCX/DOC 文件解析器
@@ -85,11 +86,59 @@ object DocxParser {
     }
 
     /**
+     * 章节标题正则模式（用于无 Heading 样式的中文小说）
+     *
+     * 匹配模式示例：
+     * - 第1章 / 第1章 xxx / 第一章 xxx
+     * - Chapter 1 / chapter 1: xxx
+     * - 序言 / 序 / 前言 / 尾声
+     */
+    private val CHAPTER_PATTERNS = listOf(
+        Regex("""^(第[零一二三四五六七八九十百千\d]+[章节回部卷篇][\s:：:.]?)"""),
+        Regex("""^([序前引楔附尾][\s:：.](?:言|曲|子|录|记|传|回)?)(.*)$"""),
+        Regex("""^(Chapter\s*\d+)""", RegexOption.IGNORE_CASE),
+        Regex("""^(第?\d+[章节回部卷])""")
+    )
+
+    /** 判断文本是否看起来像章节标题（仅通过文本内容） */
+    private fun looksLikeChapterTitle(text: String): Boolean {
+        return CHAPTER_PATTERNS.any { it.matches(text.trim()) }
+    }
+
+    /**
+     * 通过段落格式特征判断是否为章节标题
+     *
+     * 许多中文网文作者不使用 Word Heading 样式，而是用以下格式标记章节标题：
+     * - 加粗 (<w:b w:val="on"/>)
+     * - 较大字号 (<w:sz w:val="32"/> 即 16pt, 通常正文为 28/14pt)
+     * - 段前间距 (<w:spacing w:before="150"/>) 而非段后间距
+     * - 文本较短（通常 < 30 字符）
+     */
+    private fun looksLikeHeadingByFormatting(paraXml: String, text: String): Boolean {
+        // 文本过长不太可能是章节标题
+        if (text.trim().length > 40) return false
+
+        // 检测加粗
+        val isBold = Regex("""<w:b\s+w:val=["']on["'][^>]*/?>""").containsMatchIn(paraXml)
+
+        // 检测大字号（>= 32 半磅即 16pt）
+        val fontSizeRegex = Regex("""<w:sz\s+w:val=["'](\d+)["'][^>]*/?>""")
+        val fontSize = fontSizeRegex.find(paraXml)?.groupValues?.get(1)?.toIntOrNull() ?: 0
+        val isLargeFont = fontSize >= 30  // 30半磅=15pt 以上视为大字
+
+        // 检测段前间距（章节标题常有段前间距来与正文分隔）
+        val hasSpacingBefore = Regex("""<w:spacing\s+[^>]*w:before=["']([1-9]\d*)["']""").containsMatchIn(paraXml)
+
+        return isBold && isLargeFont && (hasSpacingBefore || text.trim().length <= 20)
+    }
+
+    /**
      * 解析 document.xml 字符串
      *
      * 核心逻辑：
      * - 按 <w:p> 分割出每个段落
      * - 每个段落内检测 <w:pStyle> 判断是否为标题样式
+     * - 若无 Heading 样式，则用正则匹配中文常见章节标题格式
      * - 收集 <w:t> 标签内的纯文本
      */
     private fun parseDocumentXml(
@@ -107,10 +156,18 @@ object DocxParser {
             val styleVal = extractStyleValue(pXml)
             val text = extractTextContent(pXml).trim()
             when {
+                // 优先级1: Word 原生 Heading 样式（<w:pStyle w:val="HeadingX"/>）
                 styleVal?.startsWith("Heading", ignoreCase = true) == true -> {
-                    // "Heading1" -> level=1, "Heading2" -> level=2
                     val level = styleVal.drop(7).toIntOrNull() ?: 1
                     ParaData(isHeading = true, headingLevel = level.coerceIn(1, 9), text = text)
+                }
+                // 优先级2: 正则匹配章节标题格式（针对"第X章"等文本模式）
+                looksLikeChapterTitle(text) -> {
+                    ParaData(isHeading = true, headingLevel = 1, text = text)
+                }
+                // 优先级3: 格式特征检测（加粗+大字号+短文本，针对样式化但无Heading的文档）
+                looksLikeHeadingByFormatting(pXml, text) -> {
+                    ParaData(isHeading = true, headingLevel = 1, text = text)
                 }
                 else -> ParaData(isHeading = false, headingLevel = 0, text = text)
             }

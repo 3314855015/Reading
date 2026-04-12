@@ -74,15 +74,18 @@ fun MainScreen(
     Scaffold(
         modifier = Modifier.fillMaxSize(),
         containerColor = BackgroundGray,
+        // 仅在非详情页时显示底部导航栏
         bottomBar = {
-            BottomNavigationBar(
-                items = items,
-                selectedRoute = selectedRoute,
-                userAvatarUrl = userAvatarUrl,
-                onItemSelected = { route ->
-                    selectedRoute = route
-                }
-            )
+            if (selectedBookId == null) {
+                BottomNavigationBar(
+                    items = items,
+                    selectedRoute = selectedRoute,
+                    userAvatarUrl = userAvatarUrl,
+                    onItemSelected = { route ->
+                        selectedRoute = route
+                    }
+                )
+            }
         }
     ) { innerPadding ->
         // 内容区域：根据选中的路由显示对应页面
