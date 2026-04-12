@@ -1,5 +1,11 @@
 package com.reading.my.ui.screens
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -99,20 +105,40 @@ fun MainScreen(
                      bottom = innerPadding.calculateBottomPadding()
                  )
         ) {
-            when {
-                // 书籍详情页（覆盖在书架之上）
-                selectedBookId != null -> {
-                    BookDetailScreen(
-                        bookId = selectedBookId!!,
-                        onBack = { selectedBookId = null }
+            AnimatedContent(
+                targetState = selectedBookId to selectedRoute,
+                transitionSpec = {
+                    // 进入详情页：从右侧滑入 + 淡入
+                    // 返回书架：向左滑出 + 淡出
+                    if (targetState.first != null) {
+                        slideInHorizontally(initialOffsetX = { it }) +
+                                fadeIn() togetherWith
+                                slideOutHorizontally(targetOffsetX = { -it }) +
+                                fadeOut()
+                    } else {
+                        slideInHorizontally(initialOffsetX = { -it }) +
+                                fadeIn() togetherWith
+                                slideOutHorizontally(targetOffsetX = { it }) +
+                                fadeOut()
+                    }
+                },
+                label = "pageTransition"
+            ) { (bookId, route) ->
+                when {
+                    // 书籍详情页（覆盖在书架之上）
+                    bookId != null -> {
+                        BookDetailScreen(
+                            bookId = bookId,
+                            onBack = { selectedBookId = null }
+                        )
+                    }
+                    route == Screen.Bookshelf.route -> BookshelfTab(
+                        onNavigateToDetail = { bid -> selectedBookId = bid }
                     )
+                    route == Screen.Bookstore.route -> BookstoreTab()
+                    route == Screen.Community.route -> CommunityTab()
+                    route == Screen.Profile.route -> ProfileTab(userAvatarUrl = userAvatarUrl)
                 }
-                selectedRoute == Screen.Bookshelf.route -> BookshelfTab(
-                    onNavigateToDetail = { bookId -> selectedBookId = bookId }
-                )
-                selectedRoute == Screen.Bookstore.route -> BookstoreTab()
-                selectedRoute == Screen.Community.route -> CommunityTab()
-                selectedRoute == Screen.Profile.route -> ProfileTab(userAvatarUrl = userAvatarUrl)
             }
         }
     }

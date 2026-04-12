@@ -296,38 +296,53 @@ private fun ShelfBookGrid(
     }
 }
 
-/** 单个书籍卡片 */
+/** 单个书籍卡片：封面图 + 标题 + 作者 */
 @Composable
 private fun ShelfBookCard(book: Book, onClick: () -> Unit) {
     Column(
-        modifier = Modifier.clickable(onClick = onClick),
+        modifier = Modifier
+            .clickable(onClick = onClick)
+            .padding(vertical = 4.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
+        // ===== 封面图区域（纯色占位，后续替换为真实封面） =====
         Box(
             modifier = Modifier
                 .size(width = 90.dp, height = 120.dp)
                 .clip(RoundedCornerShape(6.dp))
                 .background(Color(0xFFF0ECF5)),
             contentAlignment = Alignment.Center
-        ){
+        ) {
+            Text(
+                text = "📖",
+                fontSize = 32.sp
+            )
+        }
 
         Spacer(modifier = Modifier.height(6.dp))
 
+        // ===== 书名（最多2行，约6字/行） =====
         Text(
             text = book.title.ifBlank { "未命名" },
-            fontSize = 13.sp, fontWeight = FontWeight.Medium,
-            color = TextPrimary, maxLines = 2, overflow = TextOverflow.Ellipsis,
-            textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth()
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Medium,
+            color = TextPrimary,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.fillMaxWidth()
         )
 
         Spacer(modifier = Modifier.height(2.dp))
 
+        // ===== 作者名（1行，灰色透明，约8字） =====
         Text(
             text = book.author.ifBlank { "未知作者" },
-            fontSize = 11.sp, color = TextHint,
-            maxLines = 1, overflow = TextOverflow.Ellipsis
+            fontSize = 12.sp,
+            color = TextHint.copy(alpha = 0.6f),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
         )
-        }
     }
 }
 

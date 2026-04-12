@@ -100,6 +100,9 @@ object DocxParser {
         Regex("""^(第?\d+[章节回部卷])""")
     )
 
+    /** 段落分类数据（用于解析过程中的标题/正文区分） */
+    private data class ParaData(val isHeading: Boolean, val headingLevel: Int, val text: String)
+
     /** 判断文本是否看起来像章节标题（仅通过文本内容） */
     private fun looksLikeChapterTitle(text: String): Boolean {
         return CHAPTER_PATTERNS.any { it.matches(text.trim()) }
@@ -150,8 +153,6 @@ object DocxParser {
         val rawParagraphs = extractParagraphs(xmlContent)
 
         // ---- Step 2: 分类为标题段和正文段 ----
-        data class ParaData(val isHeading: Boolean, val headingLevel: Int, val text: String)
-
         val paragraphs = rawParagraphs.map { pXml ->
             val styleVal = extractStyleValue(pXml)
             val text = extractTextContent(pXml).trim()
@@ -239,7 +240,7 @@ object DocxParser {
         }
 
         // ---- Step 4: 提取元数据 ----
-        val title = chapters.firstOrNull()?.title ?: fallbackTitle
+        val title = extractDocumentTitle(paragraphs, fallbackTitle)
         val description = if (chapters.size > 1) {
             "${chapters.size} 章 · 共 ${chapters.sumOf { it.content.length }} 字"
         } else null
@@ -252,6 +253,31 @@ object DocxParser {
             description = description,
             chapters = chapters
         )
+    }
+
+    /**
+     * 从段落列表中提取文档书名
+     *
+     * 策略：
+     * 1. 查找前5个非空段落中的短文本（通常是文档标题/书名）
+     * 2. 排除已被识别为章节标题的段落
+     * 3. 排除以全角缩进开头的正文段落
+     * 4. 若未找到则回退到 fallbackTitle（文件名）
+     */
+    private fun extractDocumentTitle(paragraphs: List<ParaData>, fallbackTitle: String): String {
+        val candidateParagraphs = paragraphs
+            .filter { !it.isHeading }
+            .take(5)
+
+        for (para in candidateParagraphs) {
+            val text = para.text.trim()
+            // 书名特征：较短（通常 <= 15字）、不含全角缩进开头（不是正文段落）
+            if (text.length in 2..15 && !text.startsWith("　") && !text.startsWith("\u3000")) {
+                Log.d(TAG, "检测到文档标题: '$text'")
+                return text
+            }
+        }
+        return fallbackTitle
     }
 
     // ==================== XML 轻量提取工具 ====================
