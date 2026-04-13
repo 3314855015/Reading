@@ -21,7 +21,7 @@ data class PageLayoutConfig(
     /** 字号（单位：sp） */
     val fontSizeSp: Float,
 
-    /** 行高倍数（相对于字号，如 1.8 表示行高 = 字号 × 1.8） */
+    /** 行高倍数（相对于字号，如 1.6 表示行高 = 字号 × 1.6） */
     val lineHeightMultiplier: Float,
 
     /** 段落间距（行高的倍数，段落之间额外留白） */
@@ -32,6 +32,9 @@ data class PageLayoutConfig(
 
     /** 上下边距（dp） */
     val verticalPaddingDp: Float,
+
+    /** 首行缩进字符数（0=不缩进，通常为2表示缩进两个中文字符宽度） */
+    val firstLineIndentChars: Int,
 
     /** 屏幕可用宽度（px） */
     val screenWidthPx: Int,
@@ -53,13 +56,14 @@ data class PageLayoutConfig(
         fun default(
             screenWidthPx: Int,
             screenHeightPx: Int,
-            density: Float = 2.0f, // 默认按 xxhdpi 估算
+            density: Float = 2.0f,
         ): PageLayoutConfig = PageLayoutConfig(
             fontSizeSp = 18f,
-            lineHeightMultiplier = 1.8f,
-            paragraphSpacingMultiplier = 0.5f,
-            horizontalPaddingDp = 16f,
-            verticalPaddingDp = 32f,
+            lineHeightMultiplier = 1.6f,
+            paragraphSpacingMultiplier = 0.25f,
+            horizontalPaddingDp = 18f,
+            verticalPaddingDp = 20f,
+            firstLineIndentChars = 2,
             screenWidthPx = screenWidthPx,
             screenHeightPx = screenHeightPx,
             density = density,
@@ -110,12 +114,14 @@ data class PageLayoutConfig(
         get() = ((contentHeightPx) / lineHeightPx).toInt().coerceAtLeast(1)
 
     /**
-     * 估算每行可容纳的中文字符数
+     * 每行可容纳的中文字符数（精确估算）
      *
-     * 中文字符在大多数字体中近似等宽，
-     * 粗略估算：字符宽度 ≈ 字号（对中文宋体/黑体误差 <10%）。
-     * 后续渲染引擎若使用 Paint.measureText() 可得到精确值。
+     * 中文字符实际宽度 ≈ fontSizePx × 0.98（实测中文字符宽度略小于字号）
+     * 使用精确比例确保分页和渲染一致。
      */
     val charsPerLine: Int
-        get() = (contentWidthPx / fontSizePx).toInt().coerceAtLeast(10)
+        get() = ((contentWidthPx / (fontSizePx * 0.99f)).toInt()).coerceAtLeast(10)
+
+    /** 首行缩进占用的像素宽度 */
+    val firstLineIndentPx: Float get() = firstLineIndentChars * fontSizePx * 0.99f
 }

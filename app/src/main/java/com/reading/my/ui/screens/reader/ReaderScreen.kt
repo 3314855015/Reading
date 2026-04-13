@@ -56,8 +56,8 @@ fun ReaderScreen(
     // ---- 构建排版配置 ----
     val config = remember {
         PageLayoutConfig.default(
-            screenWidthPx = configuration.screenWidthDp * density.toInt(),
-            screenHeightPx = configuration.screenHeightDp * density.toInt(),
+            screenWidthPx = (configuration.screenWidthDp * density).toInt(),
+            screenHeightPx = (configuration.screenHeightDp * density).toInt(),
             density = density,
         )
     }
