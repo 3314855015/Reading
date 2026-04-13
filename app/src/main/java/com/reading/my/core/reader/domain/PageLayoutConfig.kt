@@ -60,7 +60,7 @@ data class PageLayoutConfig(
         ): PageLayoutConfig = PageLayoutConfig(
             fontSizeSp = 18f,
             lineHeightMultiplier = 1.6f,
-            paragraphSpacingMultiplier = 0.25f,
+            paragraphSpacingMultiplier = 0.25f,   // 段间距由渲染端空行 0.5x 行高控制
             horizontalPaddingDp = 18f,
             verticalPaddingDp = 20f,
             firstLineIndentChars = 2,

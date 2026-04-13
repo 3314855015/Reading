@@ -28,7 +28,7 @@ fun BookPageRenderer(
             .background(color = theme.backgroundColor)
             .drawBehind {
                 // 绘制正文
-                TextRender.renderPage(this, page.text, config, theme)
+                TextRender.renderPage(this, page, config, theme)
 
                 // 可选：绘制页码
                 if (showPageNumber) {

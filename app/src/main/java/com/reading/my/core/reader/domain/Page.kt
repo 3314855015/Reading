@@ -17,6 +17,13 @@ data class Page(
     val endCharIndex: Int,
     /** 本页实际显示的纯文本内容 */
     val text: String,
+    /**
+     * 是否为跨页续接段落
+     *
+     * 当一个段落在上一页没写完，剩余部分延续到本页时为 true。
+     * 渲染端据此判断：本页第一行不应有首行缩进，因为它是上一段的延续。
+     */
+    val isContinuation: Boolean = false,
 )
 
 /**

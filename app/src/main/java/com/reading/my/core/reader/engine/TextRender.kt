@@ -4,6 +4,7 @@ import android.util.Log
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.nativeCanvas
+import com.reading.my.core.reader.domain.Page
 import com.reading.my.core.reader.domain.PageLayoutConfig
 import com.reading.my.core.reader.domain.ReaderTheme
 
@@ -15,7 +16,10 @@ import com.reading.my.core.reader.domain.ReaderTheme
  *
  * 特性：
  * - 首行缩进（基于像素宽度精确偏移）
- * - 基于 Paint.measureText 的真实宽度换行（不依赖 charsPerLine 估算）
+ *   - 续接段落的第一行自动跳过缩进
+ *   - 同一页内后续的新段落正常有缩进
+ * - 基于 Paint.breakText 的真实宽度换行
+ * - 中文排版禁则：行首不允许出现标点符号，自动回退到上一行末尾
  * - 底部边界裁剪（防止文字溢出屏幕）
  */
 object TextRender {
@@ -23,19 +27,30 @@ object TextRender {
     private val TAG = "TextRender"
 
     /**
+     * 行首禁止出现的字符集合（中文排版禁则）
+     */
+    private val FORBIDDEN_START_CHARS = setOf(
+        '，', '。', '！', '？', '：', '；', '、',
+        '》', '”', '’', '】', '）',
+        '…', '·', '—', '～',
+        ',', '.', '!', '?', ':', ';',
+        '"', "'", '>', ')', ']', '}'
+    )
+
+    /**
      * 在指定区域绘制页面文本
      *
-     * @param drawScope   Compose DrawScope
-     * @param pageText    页面纯文本（来自 Page.text）
-     * @param config      排版参数
-     * @param theme       阅读主题
+     * @param page   页面对象（包含文本和是否为续接段落的标记）
+     * @param config 排版参数
+     * @param theme  阅读主题
      */
     fun renderPage(
         drawScope: DrawScope,
-        pageText: String,
+        page: Page,
         config: PageLayoutConfig,
         theme: ReaderTheme,
     ) {
+        val pageText = page.text
         if (pageText.isBlank()) return
 
         val paint = android.graphics.Paint().apply {
@@ -44,55 +59,74 @@ object TextRender {
             isAntiAlias = true
         }
 
+        // 字体：默认系统字体，可通过 paint.typeface 切换
+        // 例：paint.typeface = Typeface.create("宋体", Typeface.NORMAL)
+
         val canvasWidth = drawScope.size.width
         val canvasHeight = drawScope.size.height
-        // 文字绘制区域的右边界
         val maxDrawX = canvasWidth - config.horizontalPaddingPx
-        // 绘制区域底部边界
         val maxDrawY = canvasHeight - config.verticalPaddingPx
 
-        Log.d(TAG, "render: ${pageText.length}字, 画布=${canvasWidth.toInt()}x${canvasHeight.toInt()}, " +
-                "可绘区域 x:[${config.horizontalPaddingPx.toInt()}, ${maxDrawX.toInt()}] y:[${config.verticalPaddingPx.toInt()}, ${maxDrawY.toInt()}]")
+        // 空行间距比例
+        val blankLineSpacingRatio = 0.4f
+
+        Log.d(TAG, "p${page.pageIndex}: ${pageText.length}字, 续接=${page.isContinuation}, " +
+                "${canvasWidth.toInt()}x${canvasHeight.toInt()}")
 
         val lines = pageText.split('\n')
         var y = config.verticalPaddingPx + config.lineHeightPx
 
         for ((lineIndex, line) in lines.withIndex()) {
-            // 空行 → 段落间距
+            // ====== 空行处理 ======
             if (line.isBlank()) {
-                y += config.lineHeightPx
+                y += config.lineHeightPx * blankLineSpacingRatio
                 continue
             }
-
-            // 边界检查：当前 y 已超底边就停止
             if (y > maxDrawY) break
 
-            // 判断是否为段落首行（需要缩进）
-            val isFirstLineOfParagraph = (lineIndex == 0) ||
-                (lineIndex > 0 && lines[lineIndex - 1].isBlank())
+            // ====== 首行缩进判断（修复：isContinuation 只影响第一行）======
+            //
+            // 规则：
+            // - page.isContinuation=true 且 lineIndex==0 → 不缩进（跨页续接的首行）
+            // - 其他情况按正常逻辑：lineIndex==0 或前一行是空白 → 缩进（新段落首行）
+            //
+            val isFirstLineOfPage = (lineIndex == 0)
+            val prevLineIsBlank = (lineIndex > 0 && lines[lineIndex - 1].isBlank())
 
-            // 首行缩进像素值（直接用配置计算，不依赖全角空格测量）
-            val indentPx = if (isFirstLineOfParagraph && config.firstLineIndentChars > 0)
+            val shouldIndent = when {
+                // 跨页续接的首行 → 不缩进
+                page.isContinuation && isFirstLineOfPage -> false
+                // 新段落的首行（页首 或 前面有空行）→ 缩进
+                isFirstLineOfPage || prevLineIsBlank -> true
+                // 段落中间的续行 → 不缩进
+                else -> false
+            }
+
+            val indentPx = if (shouldIndent && config.firstLineIndentChars > 0)
                 config.firstLineIndentPx
             else
                 0f
 
-            // 本行起始 x = 左边距 + 缩进
             var x = config.horizontalPaddingPx + indentPx
-            // 本行剩余可用宽度
             var remainingWidth = maxDrawX - x
 
-            // 逐字符测量换行
+            // ====== 逐字符测量换行 + 禁则处理 ======
             var i = 0
             while (i < line.length) {
-                // 用 Paint.breakText 计算在 remainingWidth 内能放多少个字符
-                val fitCount = paint.breakText(
-                    line.substring(i), true, remainingWidth, null
-                )
+                var fitCount = paint.breakText(line.substring(i), true, remainingWidth, null)
+
+                // 禁则：断点后是行首禁止标点 → 回退一字
+                if (fitCount in 1 until (line.length - i)) {
+                    val nextChar = line[i + fitCount]
+                    if (nextChar in FORBIDDEN_START_CHARS) {
+                        fitCount--
+                    }
+                }
+
                 if (fitCount <= 0) {
-                    // 连一个字符都放不下（极端情况），强制放一个然后换行
-                    val chunk = line[i].toString()
-                    drawScope.drawContext.canvas.nativeCanvas.drawText(chunk, x, y, paint)
+                    drawScope.drawContext.canvas.nativeCanvas.drawText(
+                        line[i].toString(), x, y, paint
+                    )
                 } else {
                     val chunk = line.substring(i, i + fitCount)
                     drawScope.drawContext.canvas.nativeCanvas.drawText(chunk, x, y, paint)
@@ -100,23 +134,21 @@ object TextRender {
                     if (i >= line.length) break
                 }
 
-                // 换到下一行
                 y += config.lineHeightPx
-                // 超出底边界则停止
                 if (y > maxDrawY) break
 
-                // 新行重置 x 到左边距（后续行无缩进），重新计算可用宽度
+                // 后续行回到左边距，无缩进
                 x = config.horizontalPaddingPx
                 remainingWidth = maxDrawX - x
             }
 
-            // 段落结束后推进 y（如果没被 break 跳出的话，这里确保段间距）
+            // 段落后推进 y（未超底边的话）
             if (y <= maxDrawY) {
                 y += config.lineHeightPx
             }
         }
 
-        Log.d(TAG, "render完成: 最终y=${y}px, 画布高=$canvasHeight")
+        Log.d(TAG, "完成 p${page.pageIndex}: 最终y=${y}/${canvasHeight}px, 剩余=${(canvasHeight - y).toInt()}px")
     }
 
     internal fun colorToArgb(color: Color): Int =

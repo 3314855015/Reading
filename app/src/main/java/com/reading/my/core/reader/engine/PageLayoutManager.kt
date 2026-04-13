@@ -39,6 +39,8 @@ class PageLayoutManager(private val config: PageLayoutConfig) {
         var currentLinesUsed: Int = 0,
         var currentPageStartChar: Int = 0,
         val pageTextBuilder: StringBuilder = StringBuilder(),
+        /** 当前页是否为跨页续接（上一页某段落未完，本页继续） */
+        var isContinuation: Boolean = false,
     ) {
         fun freeLines(totalLines: Int): Int = totalLines - currentLinesUsed
 
@@ -121,11 +123,13 @@ class PageLayoutManager(private val config: PageLayoutConfig) {
             if (free <= 0) {
                 flushPage(pages, chapterIndex, state)
                 state.resetForNewPage(state.globalCharOffset)
-                isFirstChunk = true
+                // 页满但段落未完 → 下页是续接页
+                state.isContinuation = true
+                isFirstChunk = false  // 续接页首行不缩进！
                 continue
             }
 
-            // 首行因缩进可用字符更少
+            // 首行因缩进可用字符更少（仅当是段落的真正第一块时）
             val maxCharsThisLine = if (isFirstChunk && config.firstLineIndentChars > 0)
                 minOf(remaining.length, free * effectiveCharsFirstLine)
             else
@@ -146,9 +150,14 @@ class PageLayoutManager(private val config: PageLayoutConfig) {
             isFirstChunk = false
 
             if (remaining.isNotEmpty()) {
+                // 段落未完 → 存档，下页继续
                 flushPage(pages, chapterIndex, state)
                 state.resetForNewPage(state.globalCharOffset)
-                isFirstChunk = true
+                state.isContinuation = true   // 标记为续接页
+                isFirstChunk = false          // 续接不缩进
+            } else {
+                // 段落写完了 → 如果后面还有内容写入此页，不再算续接
+                // 但如果本页后续又写了新段落，新段落的首块应该有缩进（由外层循环控制 isFirstChunk=true）
             }
         }
     }
@@ -167,8 +176,11 @@ class PageLayoutManager(private val config: PageLayoutConfig) {
                 startCharIndex = state.currentPageStartChar,
                 endCharIndex = state.globalCharOffset,
                 text = pageText,
+                isContinuation = state.isContinuation,
             )
         )
+        // flush 后重置续接标记：下一页默认不是续接页
+        state.isContinuation = false
     }
 
     /**
