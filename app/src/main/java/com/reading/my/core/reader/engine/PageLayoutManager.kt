@@ -1,6 +1,5 @@
 package com.reading.my.core.reader.engine
 
-import android.util.Log
 import com.reading.my.core.reader.domain.ChapterPages
 import com.reading.my.core.reader.domain.Page
 import com.reading.my.core.reader.domain.PageLayoutConfig
@@ -17,8 +16,6 @@ import com.reading.my.core.reader.domain.PageLayoutConfig
  * 4. 输出 [ChapterPages]（包含该章所有页的有序列表）
  */
 class PageLayoutManager(private val config: PageLayoutConfig) {
-
-    private val TAG = "PageLayoutManager"
 
     /** 每行可容纳的中文字符数 */
     val charsPerLine: Int get() = config.charsPerLine
@@ -63,15 +60,6 @@ class PageLayoutManager(private val config: PageLayoutConfig) {
     fun paginateChapter(chapterIndex: Int, content: String): ChapterPages {
         if (content.isBlank()) return emptyChapter(chapterIndex)
 
-        Log.d(TAG, "=== 分页配置 === 屏幕${config.screenWidthPx}x${config.screenHeightPx}px d=${config.density}")
-        Log.d(TAG, "  边距=${config.horizontalPaddingDp}dp(左右)x${config.verticalPaddingDp}dp(上下) → ${config.horizontalPaddingPx.toInt()}x${config.verticalPaddingPx.toInt()}px")
-        Log.d(TAG, "  字号=${config.fontSizeSp}sp → ${config.fontSizePx.toInt()}px")
-        Log.d(TAG, "  行高=${config.lineHeightMultiplier}x → ${config.lineHeightPx.toInt()}px")
-        Log.d(TAG, "  内容区域: ${config.contentWidthPx.toInt()}x${config.contentHeightPx.toInt()}px")
-        Log.d(TAG, "  charsPerLine=$charsPerLine, linesPerPage=$linesPerPage")
-        Log.d(TAG, "  理论最大行数(内容高度/行高)= ${(config.contentHeightPx / config.lineHeightPx).toInt()}")
-        Log.d(TAG, "  首行缩进=${config.firstLineIndentChars}字=${config.firstLineIndentPx.toInt()}px")
-
         val pages = mutableListOf<Page>()
         val paragraphs = content.split('\n')
         val state = PaginationState()
@@ -110,7 +98,6 @@ class PageLayoutManager(private val config: PageLayoutConfig) {
             pages.add(Page(chapterIndex, 0, 0, 0, ""))
         }
 
-        Log.d(TAG, "章节$chapterIndex → ${pages.size}页 (${content.length}字)")
         return ChapterPages(chapterIndex = chapterIndex, pages = pages)
     }
 
@@ -129,12 +116,9 @@ class PageLayoutManager(private val config: PageLayoutConfig) {
         var remaining = paragraph
         var isFirstChunk = true  // 是否为段落的第一块（需要缩进）
 
-        Log.d(TAG, "  [writePara] 段落${paragraph.length}字, 当前页已用${String.format("%.1f", state.currentLinesUsedF)}/${linesPerPage}行")
-
         while (remaining.isNotEmpty()) {
             val free = state.freeLines(linesPerPage)
             if (free <= 0) {
-                Log.d(TAG, "    → 页满(free=${String.format("%.1f", free)}<=0), flush p${state.pageIndex}")
                 flushPage(pages, chapterIndex, state)
                 state.resetForNewPage(state.globalCharOffset)
                 // 页满但段落未完 → 下页是续接页
@@ -167,8 +151,6 @@ class PageLayoutManager(private val config: PageLayoutConfig) {
                 1 + ceilDiv(chunk.length - effectiveCpl, charsPerLine)
             }
             
-            Log.d(TAG, "    写入${chunk.length}字(消耗${consumedLines}行, 首块=$isFirstChunk), 剩余${String.format("%.1f", linesPerPage - state.currentLinesUsedF - consumedLines)}行")
-            
             state.currentLinesUsedF += consumedLines.toFloat()
             state.globalCharOffset += chunk.length
 
@@ -176,8 +158,6 @@ class PageLayoutManager(private val config: PageLayoutConfig) {
             isFirstChunk = false
 
             if (remaining.isNotEmpty()) {
-                // 段落未完 → 存档，下页继续
-                Log.d(TAG, "    → 段落未完(剩${remaining.length}字), flush p${state.pageIndex}, 标记续接")
                 flushPage(pages, chapterIndex, state)
                 state.resetForNewPage(state.globalCharOffset)
                 state.isContinuation = true   // 标记为续接页
@@ -196,10 +176,6 @@ class PageLayoutManager(private val config: PageLayoutConfig) {
         state: PaginationState,
     ) {
         val pageText = state.pageTextBuilder.toString().trimEnd()
-        val actualLines = pageText.split('\n').size
-        Log.d(TAG, "  [flush p${state.pageIndex}] 续接=${state.isContinuation}, " +
-                "用了${String.format("%.1f", state.currentLinesUsedF)}行(估算), 文本${pageText.length}字(${actualLines}实际行), " +
-                "剩余可容纳=${String.format("%.1f", linesPerPage - state.currentLinesUsedF)}行")
         pages.add(
             Page(
                 chapterIndex = chapterIndex,
