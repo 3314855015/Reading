@@ -50,6 +50,8 @@ import com.reading.my.ui.screens.home.HomeScreen
 import com.reading.my.ui.screens.bookstore.BookstoreScreen
 import com.reading.my.ui.screens.bookshelf.BookshelfScreen
 import com.reading.my.ui.screens.bookshelf.BookDetailScreen
+import com.reading.my.domain.model.Chapter
+import com.reading.my.ui.screens.reader.ReaderScreen
 
 /**
  * 主界面 - 底部导航容器
@@ -76,6 +78,8 @@ fun MainScreen(
     
     // 书籍详情导航状态
     var selectedBookId by remember { mutableStateOf<Long?>(null) }
+    // 阅读器导航状态
+    var selectedChapterForReader by remember { mutableStateOf<Chapter?>(null) }
 
     Scaffold(
         modifier = Modifier.fillMaxSize(),
@@ -106,10 +110,10 @@ fun MainScreen(
                  )
         ) {
             AnimatedContent(
-                targetState = selectedBookId to selectedRoute,
+                targetState = selectedChapterForReader to (selectedBookId to selectedRoute),
                 transitionSpec = {
-                    // 进入详情页：从右侧滑入 + 淡入
-                    // 返回书架：向左滑出 + 淡出
+                    // 进入详情页/阅读器：从右侧滑入 + 淡入
+                    // 返回：向左滑出 + 淡出
                     if (targetState.first != null) {
                         slideInHorizontally(initialOffsetX = { it }) +
                                 fadeIn() togetherWith
@@ -123,13 +127,24 @@ fun MainScreen(
                     }
                 },
                 label = "pageTransition"
-            ) { (bookId, route) ->
+            ) { (chapter, bookIdAndRoute) ->
+                val (bookId, route) = bookIdAndRoute
+
                 when {
+                    // 阅读器（最顶层）
+                    chapter != null -> {
+                        ReaderScreen(
+                            chapter = chapter,
+                            bookTitle = "书籍",
+                            onBack = { selectedChapterForReader = null },
+                        )
+                    }
                     // 书籍详情页（覆盖在书架之上）
                     bookId != null -> {
                         BookDetailScreen(
                             bookId = bookId,
-                            onBack = { selectedBookId = null }
+                            onBack = { selectedBookId = null },
+                            onNavigateToReader = { ch -> selectedChapterForReader = ch }
                         )
                     }
                     route == Screen.Bookshelf.route -> BookshelfTab(

@@ -52,12 +52,13 @@ import com.reading.my.ui.theme.TextSecondary
  * 用于验证导入解析是否正确：
  * - 显示书籍元数据（标题、作者、简介、章节数）
  * - 显示章节目录列表
- * - 点击章节可查看正文内容（验证解析完整性）
+ * - 点击章节 → 进入自研阅读器（ReaderScreen，带分页+翻页渲染）
  */
 @Composable
 fun BookDetailScreen(
     bookId: Long,
     onBack: () -> Unit = {},
+    onNavigateToReader: ((Chapter) -> Unit)? = null,  // ★ 新增：跳转阅读器
     viewModel: BookDetailViewModel = hiltViewModel()
 ) {
     // 加载书籍详情和章节列表
@@ -97,7 +98,11 @@ fun BookDetailScreen(
                     book = uiState.book!!,
                     chapters = uiState.chapters,
                     onChapterClick = { chapter ->
-                        viewModel.selectChapter(chapter)
+                        if (onNavigateToReader != null) {
+                            onNavigateToReader(chapter)
+                        } else {
+                            viewModel.selectChapter(chapter)
+                        }
                     },
                     selectedChapter = uiState.selectedChapter,
                     onBack = onBack,
