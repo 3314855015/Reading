@@ -54,10 +54,14 @@ fun ReaderScreen(
     val density = LocalDensity.current.density
 
     // ---- 构建排版配置 ----
+    // 注意：使用 configuration.screenHeightDp 会包含系统状态栏和导航栏的高度，
+    // 但实际 Compose Canvas 绘制区域不含这些，会导致分页高度偏大、底部留白。
+    // 因此需要减去系统栏的预估高度（约 48dp：状态栏24dp + 导航栏24dp）
+    val systemBarsHeightDp = 48f
     val config = remember {
         PageLayoutConfig.default(
             screenWidthPx = (configuration.screenWidthDp * density).toInt(),
-            screenHeightPx = (configuration.screenHeightDp * density).toInt(),
+            screenHeightPx = ((configuration.screenHeightDp - systemBarsHeightDp) * density).toInt(),
             density = density,
         )
     }

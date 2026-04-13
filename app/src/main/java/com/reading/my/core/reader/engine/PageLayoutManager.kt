@@ -32,21 +32,25 @@ class PageLayoutManager(private val config: PageLayoutConfig) {
 
     /**
      * 分页过程中的可变状态
+     *
+     * currentLinesUsedF 使用浮点数精确追踪已用行高（含段落间距的小数部分），
+     * 避免逐项向上取整导致的累积误差。只有文本行占用整数行，空行间距保留小数。
      */
     private data class PaginationState(
         var pageIndex: Int = 0,
         var globalCharOffset: Int = 0,
-        var currentLinesUsed: Int = 0,
+        var currentLinesUsedF: Float = 0f,   // 浮点数：精确追踪像素预算
         var currentPageStartChar: Int = 0,
         val pageTextBuilder: StringBuilder = StringBuilder(),
         /** 当前页是否为跨页续接（上一页某段落未完，本页继续） */
         var isContinuation: Boolean = false,
     ) {
-        fun freeLines(totalLines: Int): Int = totalLines - currentLinesUsed
+        /** 剩余可用行数 */
+        fun freeLines(totalLines: Int): Float = totalLines - currentLinesUsedF
 
         fun resetForNewPage(newStartChar: Int) {
             currentPageStartChar = newStartChar
-            currentLinesUsed = 0
+            currentLinesUsedF = 0f
             pageTextBuilder.clear()
         }
     }
@@ -59,8 +63,14 @@ class PageLayoutManager(private val config: PageLayoutConfig) {
     fun paginateChapter(chapterIndex: Int, content: String): ChapterPages {
         if (content.isBlank()) return emptyChapter(chapterIndex)
 
-        Log.d(TAG, "分页配置: 屏幕${config.screenWidthPx}x${config.screenHeightPx}px d=${config.density}, " +
-                "charsPerLine=$charsPerLine, linesPerPage=$linesPerPage, indent=${config.firstLineIndentChars}字")
+        Log.d(TAG, "=== 分页配置 === 屏幕${config.screenWidthPx}x${config.screenHeightPx}px d=${config.density}")
+        Log.d(TAG, "  边距=${config.horizontalPaddingDp}dp(左右)x${config.verticalPaddingDp}dp(上下) → ${config.horizontalPaddingPx.toInt()}x${config.verticalPaddingPx.toInt()}px")
+        Log.d(TAG, "  字号=${config.fontSizeSp}sp → ${config.fontSizePx.toInt()}px")
+        Log.d(TAG, "  行高=${config.lineHeightMultiplier}x → ${config.lineHeightPx.toInt()}px")
+        Log.d(TAG, "  内容区域: ${config.contentWidthPx.toInt()}x${config.contentHeightPx.toInt()}px")
+        Log.d(TAG, "  charsPerLine=$charsPerLine, linesPerPage=$linesPerPage")
+        Log.d(TAG, "  理论最大行数(内容高度/行高)= ${(config.contentHeightPx / config.lineHeightPx).toInt()}")
+        Log.d(TAG, "  首行缩进=${config.firstLineIndentChars}字=${config.firstLineIndentPx.toInt()}px")
 
         val pages = mutableListOf<Page>()
         val paragraphs = content.split('\n')
@@ -74,19 +84,20 @@ class PageLayoutManager(private val config: PageLayoutConfig) {
 
             // 预估该段落需要的行数（首行因缩进少放几个字符）
             val paraLines = calculateLinesForText(paragraph)
-            val spacingNeeded = if (state.currentLinesUsed > 0) 1 else 0
+            // 段落间距：使用精确浮点成本，与渲染端完全一致
+            val spacingCost = config.blankLineCostExact
 
-            if (state.currentLinesUsed + paraLines + spacingNeeded > linesPerPage) {
-                if (state.currentLinesUsed > 0) {
+            if (state.currentLinesUsedF + paraLines + spacingCost > linesPerPage) {
+                if (state.currentLinesUsedF > 0) {
                     flushPage(pages, chapterIndex, state)
                     state.resetForNewPage(state.globalCharOffset)
                 }
             }
 
-            // 写入段落间空行
+            // 写入段落间空行（使用精确的浮点像素成本，与渲染端一致）
             if (state.pageTextBuilder.isNotEmpty()) {
                 state.pageTextBuilder.append('\n')
-                state.currentLinesUsed++
+                state.currentLinesUsedF += config.blankLineCostExact
             }
 
             writeParagraph(paragraph, pages, chapterIndex, state)
@@ -118,9 +129,12 @@ class PageLayoutManager(private val config: PageLayoutConfig) {
         var remaining = paragraph
         var isFirstChunk = true  // 是否为段落的第一块（需要缩进）
 
+        Log.d(TAG, "  [writePara] 段落${paragraph.length}字, 当前页已用${String.format("%.1f", state.currentLinesUsedF)}/${linesPerPage}行")
+
         while (remaining.isNotEmpty()) {
             val free = state.freeLines(linesPerPage)
             if (free <= 0) {
+                Log.d(TAG, "    → 页满(free=${String.format("%.1f", free)}<=0), flush p${state.pageIndex}")
                 flushPage(pages, chapterIndex, state)
                 state.resetForNewPage(state.globalCharOffset)
                 // 页满但段落未完 → 下页是续接页
@@ -130,20 +144,32 @@ class PageLayoutManager(private val config: PageLayoutConfig) {
             }
 
             // 首行因缩进可用字符更少（仅当是段落的真正第一块时）
+            // free 是浮点数，向下取整为整数行来计算能放多少字
+            val freeInt = kotlin.math.floor(free.toDouble()).toInt().coerceAtLeast(0)
             val maxCharsThisLine = if (isFirstChunk && config.firstLineIndentChars > 0)
-                minOf(remaining.length, free * effectiveCharsFirstLine)
+                minOf(remaining.length, freeInt * effectiveCharsFirstLine)
             else
-                minOf(remaining.length, free * charsPerLine)
+                minOf(remaining.length, freeInt * charsPerLine)
 
             val chunk = remaining.substring(0, maxCharsThisLine)
 
             if (state.pageTextBuilder.isNotEmpty()) state.pageTextBuilder.append('\n')
             state.pageTextBuilder.append(chunk)
 
-            val consumedLines = ceilDiv(chunk.length,
-                if (isFirstChunk && config.firstLineIndentChars > 0) effectiveCharsFirstLine else charsPerLine
-            )
-            state.currentLinesUsed += consumedLines
+            // 正确计算 chunk 的实际占用行数：
+            //   - 如果是首行有缩进的块：第一行用 effectiveCharsFirstLine，后续用 charsPerLine
+            //   - 否则全部用 charsPerLine
+            val effectiveCpl = if (isFirstChunk && config.firstLineIndentChars > 0)
+                effectiveCharsFirstLine else charsPerLine
+            val consumedLines = if (chunk.length <= effectiveCpl) {
+                1
+            } else {
+                1 + ceilDiv(chunk.length - effectiveCpl, charsPerLine)
+            }
+            
+            Log.d(TAG, "    写入${chunk.length}字(消耗${consumedLines}行, 首块=$isFirstChunk), 剩余${String.format("%.1f", linesPerPage - state.currentLinesUsedF - consumedLines)}行")
+            
+            state.currentLinesUsedF += consumedLines.toFloat()
             state.globalCharOffset += chunk.length
 
             remaining = remaining.substring(maxCharsThisLine)
@@ -151,6 +177,7 @@ class PageLayoutManager(private val config: PageLayoutConfig) {
 
             if (remaining.isNotEmpty()) {
                 // 段落未完 → 存档，下页继续
+                Log.d(TAG, "    → 段落未完(剩${remaining.length}字), flush p${state.pageIndex}, 标记续接")
                 flushPage(pages, chapterIndex, state)
                 state.resetForNewPage(state.globalCharOffset)
                 state.isContinuation = true   // 标记为续接页
@@ -169,6 +196,10 @@ class PageLayoutManager(private val config: PageLayoutConfig) {
         state: PaginationState,
     ) {
         val pageText = state.pageTextBuilder.toString().trimEnd()
+        val actualLines = pageText.split('\n').size
+        Log.d(TAG, "  [flush p${state.pageIndex}] 续接=${state.isContinuation}, " +
+                "用了${String.format("%.1f", state.currentLinesUsedF)}行(估算), 文本${pageText.length}字(${actualLines}实际行), " +
+                "剩余可容纳=${String.format("%.1f", linesPerPage - state.currentLinesUsedF)}行")
         pages.add(
             Page(
                 chapterIndex = chapterIndex,
@@ -188,10 +219,11 @@ class PageLayoutManager(private val config: PageLayoutConfig) {
      */
     internal fun calculateLinesForText(text: String): Int {
         if (text.isEmpty()) return 1
-        // 第一行可用字符较少
+        // 第一行可用字符较少（受缩进限制）
         val firstLineChars = effectiveCharsFirstLine.coerceAtLeast(text.length)
+        if (text.length <= firstLineChars) return 1
+        // 后续行用完整容量
         val remaining = text.length - firstLineChars
-        if (remaining <= 0) return 1
         return 1 + ceilDiv(remaining, charsPerLine)
     }
 

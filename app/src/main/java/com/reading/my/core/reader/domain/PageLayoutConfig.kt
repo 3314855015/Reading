@@ -24,9 +24,6 @@ data class PageLayoutConfig(
     /** 行高倍数（相对于字号，如 1.6 表示行高 = 字号 × 1.6） */
     val lineHeightMultiplier: Float,
 
-    /** 段落间距（行高的倍数，段落之间额外留白） */
-    val paragraphSpacingMultiplier: Float,
-
     /** 左右边距（dp） */
     val horizontalPaddingDp: Float,
 
@@ -35,6 +32,24 @@ data class PageLayoutConfig(
 
     /** 首行缩进字符数（0=不缩进，通常为2表示缩进两个中文字符宽度） */
     val firstLineIndentChars: Int,
+
+    /**
+     * 段落间空行的间距比例（相对于行高）
+     *
+     * 0.0 = 无空行间距（段落紧挨）
+     * 0.5 = 空行占半行高
+     * 1.0 = 空行占一整行高度（当前值，类似书籍排版）
+     */
+    val blankLineSpacingRatio: Float,
+
+    /**
+     * 段落后额外推进的比例（相对于行高）
+     *
+     * 在空行间距之外，每个段落的末尾再增加一点空间。
+     * 与 blankLineSpacingRatio 叠加构成完整的段落间距。
+     * 建议值：0.3~0.5
+     */
+    val paraEndSpacingRatio: Float,
 
     /** 屏幕可用宽度（px） */
     val screenWidthPx: Int,
@@ -60,10 +75,11 @@ data class PageLayoutConfig(
         ): PageLayoutConfig = PageLayoutConfig(
             fontSizeSp = 18f,
             lineHeightMultiplier = 1.6f,
-            paragraphSpacingMultiplier = 0.25f,   // 段间距由渲染端空行 0.5x 行高控制
             horizontalPaddingDp = 18f,
             verticalPaddingDp = 20f,
             firstLineIndentChars = 2,
+            blankLineSpacingRatio = 0.5f,    // 段落空行 ≈ 半行高度（紧凑小说风格）
+            paraEndSpacingRatio = 0.2f,      // 段后微调间距（轻微）
             screenWidthPx = screenWidthPx,
             screenHeightPx = screenHeightPx,
             density = density,
@@ -78,8 +94,16 @@ data class PageLayoutConfig(
     /** 单行行高（px）= 字号 × 行高倍数 */
     val lineHeightPx: Float get() = fontSizePx * lineHeightMultiplier
 
-    /** 段落额外间距（px）= 行高 × 段落间距倍数 */
-    val paragraphSpacingPx: Float get() = lineHeightPx * paragraphSpacingMultiplier
+    /**
+     * 段落间距总成本（以"行高"为单位，供分页端使用）
+     *
+     * 分页端需要保守估算：宁可多留空也不要丢字。
+     * 总成本 = 空行间距 + 段后推进，向上取整为整行。
+     */
+    val blankLineCostLines: Int
+        get() = kotlin.math.ceil(
+            (blankLineSpacingRatio + paraEndSpacingRatio).toDouble()
+        ).toInt()
 
     /** 左右边距 px */
     val horizontalPaddingPx: Float get() = horizontalPaddingDp * density
@@ -107,8 +131,11 @@ data class PageLayoutConfig(
     /**
      * 每页可容纳的行数
      *
-     * 计算公式：(可用高度) / (行高 + 段落间距)
+     * 计算公式：(可用高度) / (行高)
      * 向下取整确保不溢出。
+     *
+     * 注意：段落间空行在渲染端只占 0.4x 行高（不是整行），
+     * 因此这里不需要额外预留段落间距空间，直接用可用高度除以行高即可。
      */
     val linesPerPage: Int
         get() = ((contentHeightPx) / lineHeightPx).toInt().coerceAtLeast(1)
@@ -116,12 +143,28 @@ data class PageLayoutConfig(
     /**
      * 每行可容纳的中文字符数（精确估算）
      *
-     * 中文字符实际宽度 ≈ fontSizePx × 0.98（实测中文字符宽度略小于字号）
-     * 使用精确比例确保分页和渲染一致。
+     * 通过渲染端 Paint.breakText 实测反算：
+     *   - 全宽(981px)实际容纳约 20 个中文字 → 单字宽度 ≈ 49px = fontSizePx × 1.0
+     *   - 缩进后(896px)实际容纳约 17~18 个中文字
+     *
+     * 中文字符在默认字体下的实际宽度几乎等于 fontSize（ratio ≈ 1.0），
+     * 此前使用 0.85f 导致分页高估每行容量，造成严重底部留白。
+     * 使用 0.97f 留微小余量，确保分页不溢出。
      */
     val charsPerLine: Int
-        get() = ((contentWidthPx / (fontSizePx * 0.99f)).toInt()).coerceAtLeast(10)
+        get() = ((contentWidthPx / (fontSizePx * 0.97f)).toInt()).coerceAtLeast(10)
 
-    /** 首行缩进占用的像素宽度 */
-    val firstLineIndentPx: Float get() = firstLineIndentChars * fontSizePx * 0.99f
+    /** 首行缩进占用的像素宽度（使用与 charsPerLine 相同的字符宽度比例） */
+    val firstLineIndentPx: Float get() = firstLineIndentChars * fontSizePx * 0.97f
+
+    /**
+     * 段落间距像素成本（供分页端精确预算）
+     *
+     * 返回值以"行高"为单位的小数，不再取整为整数行。
+     * 分页端应使用浮点累加来跟踪已用空间，避免逐项向上取整导致的累积误差。
+     *
+     * 实际渲染消耗 = blankLineSpacingRatio + paraEndSpacingRatio（单位：行高）
+     */
+    val blankLineCostExact: Float
+        get() = blankLineSpacingRatio + paraEndSpacingRatio
 }
