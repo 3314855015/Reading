@@ -42,6 +42,11 @@ android {
     buildFeatures {
         compose = true
     }
+
+    // 让单元测试中未 mock 的 Android API 返回默认值（而非抛 RuntimeException）
+    testOptions {
+        unitTests.isReturnDefaultValues = true
+    }
     
     packaging {
         resources {
@@ -61,7 +66,7 @@ dependencies {
     implementation(libs.androidx.compose.material3)
     implementation(libs.androidx.compose.material.icons.extended)  // ★ 全量图标库（People, MenuBook 等）
     implementation(libs.androidx.navigation.compose)
-    
+    implementation(libs.androidx.compose.foundation)          // ★ 基础布局（HorizontalPager 翻页）
     // Hilt
     implementation(libs.hilt.android)
     ksp(libs.hilt.android.compiler)
