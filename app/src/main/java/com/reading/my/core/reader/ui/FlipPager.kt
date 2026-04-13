@@ -44,6 +44,7 @@ fun FlipPagerReader(
     chapterPages: ChapterPages,
     config: PageLayoutConfig,
     theme: ReaderTheme,
+    bookId: String = "",
     initialPage: Int = 0,
     onPageChange: ((pageIndex: Int) -> Unit)? = null,
 ) {
@@ -74,6 +75,7 @@ fun FlipPagerReader(
             val page = chapterPages.getPage(pageIndex)
             if (page != null) {
                 BookPageRenderer(
+                    bookId = bookId,
                     page = page,
                     config = config,
                     theme = theme,

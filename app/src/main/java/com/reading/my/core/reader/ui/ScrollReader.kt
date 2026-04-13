@@ -37,6 +37,7 @@ fun ScrollModeReader(
     chapterPages: ChapterPages,
     config: PageLayoutConfig,
     theme: ReaderTheme,
+    bookId: String = "",
     onScrollProgress: ((Float) -> Unit)? = null,
 ) {
     LazyColumn(
@@ -56,6 +57,7 @@ fun ScrollModeReader(
                     .height((config.screenHeightPx / config.density).dp)  // 一屏高度
             ) {
                 BookPageRenderer(
+                    bookId = bookId,
                     page = page,
                     config = config,
                     theme = theme,

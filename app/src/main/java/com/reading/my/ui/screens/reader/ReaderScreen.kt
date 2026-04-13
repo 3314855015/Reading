@@ -47,6 +47,7 @@ fun ReaderScreen(
     chapter: Chapter,
     bookTitle: String,
     totalChapters: Int = 1,
+    bookId: String = "",          // 缓存隔离标识
     onBack: () -> Unit = {},
     onPageChange: ((chapterIndex: Int, pageIndex: Int) -> Unit)? = null,
 ) {
@@ -108,6 +109,7 @@ fun ReaderScreen(
                     chapter = chapter,
                     bookTitle = bookTitle,
                     totalChapters = totalChapters,
+                    bookId = bookId,
                     onBack = onBack,
                     onPageChange = onPageChange,
                 )
@@ -127,6 +129,7 @@ private fun ReaderContent(
     chapter: Chapter,
     bookTitle: String,
     totalChapters: Int,
+    bookId: String,
     onBack: () -> Unit,
     onPageChange: ((chapterIndex: Int, pageIndex: Int) -> Unit)?,
 ) {
@@ -149,6 +152,7 @@ private fun ReaderContent(
             chapterPages = chapterPages,
             config = config,
             theme = theme,
+            bookId = bookId,
             initialPage = 0,
             onPageChange = { pageIndex ->
                 onPageChange?.invoke(chapter.chapterIndex, pageIndex)
