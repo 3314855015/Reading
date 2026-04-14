@@ -7,12 +7,17 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
 import com.reading.my.core.reader.domain.ChapterPages
 import com.reading.my.core.reader.domain.PageLayoutConfig
 import com.reading.my.core.reader.domain.ReaderTheme
 import com.reading.my.core.reader.engine.BookPageRenderer
 import kotlinx.coroutines.flow.distinctUntilChanged
+import android.util.Log
+
+private const val TAG = "FlipPager"
 
 /** 翻页模式枚举 */
 enum class FlipMode {
@@ -26,17 +31,26 @@ enum class FlipMode {
  * 使用 Compose Foundation 的 HorizontalPager 实现左右滑动翻页，
  * 提供类似 Kindle / 微信读书翻页的交互体验。
  *
- * 特性：
- * - 左右滑动切换页面，带弹簧动画
- * - 自动预加载相邻页面（±1）
- * - 翻页回调（用于进度保存、预加载触发）
- * - 支持跳转到指定页码
+ * ## 章节边界跳转（核心机制）
+ *
+ * **问题**：HorizontalPager 在到达首/末页时会自动吸附（snap back）。
+ * 我们需要区分两种场景：
+ * - **正常到达边界**（从 p1 翻到 p0）：不应触发跨章跳转 ❌
+ * - **在边界处继续往边缘方向滑**（在 p0 继续左滑）：应触发跨章跳转 ✅
+ *
+ * **实现**：监听 `isScrollInProgress` 的状态变化：
+ * 1. 滚动开始时记录当前页码
+ * 2. 滚动结束时检查：
+ *    - 如果起始和结束是同一个边界页码（0 或末页）→ 用户尝试了越界 → 触发回调
+ *    - 如果页码发生了变化（包括正常翻到边界） → 不触发
  *
  * @param chapterPages 当前章节的分页结果（来自 PageLayoutManager）
  * @param config        排版参数
  * @param theme         阅读主题
  * @param initialPage   初始显示的页码（默认 0）
- * @param onPageChange  翻页回调：(chapterIndex, pageIndex) → Unit
+ * @param onPageChange  翻页回调：(pageIndex) -> Unit
+ * @param onReachStart  在第一页继续左滑 → 跳上一章末页
+ * @param onReachEnd    在最后一页继续右滑 → 跳下一章首页
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -47,21 +61,64 @@ fun FlipPagerReader(
     bookId: String = "",
     initialPage: Int = 0,
     onPageChange: ((pageIndex: Int) -> Unit)? = null,
+    onReachStart: (() -> Unit)? = null,
+    onReachEnd: (() -> Unit)? = null,
 ) {
     val pageCount = chapterPages.pageCount.coerceAtLeast(1)
+
     val pagerState = rememberPagerState(
         initialPage = initialPage.coerceIn(0, pageCount - 1),
         pageCount = { pageCount },
     )
 
-    // 监听翻页事件并回调
+    // 保持最新引用的回调（避免闭包捕获过期值）
+    val currentOnReachStart by rememberUpdatedState(onReachStart)
+    val currentOnReachEnd by rememberUpdatedState(onReachEnd)
+
+    // ---- 1) 正常翻页日志 + 回调 ----
     if (onPageChange != null) {
         LaunchedEffect(pagerState) {
-            // snapshotFlow 将 PagerState 的 currentPage 变为 Flow<Int>
             androidx.compose.runtime.snapshotFlow { pagerState.currentPage }
                 .distinctUntilChanged()
                 .collect { page ->
+                    Log.d(TAG, "翻页: ch${chapterPages.chapterIndex} p$page/${pageCount-1}")
                     onPageChange(page)
+                }
+        }
+    }
+
+    // ---- 2) 边界越跳转检测（Overscroll Detection）----
+    // 核心逻辑：
+    //   滚动开始时记录起始页码 → 滚动结束后若仍在同一边界页 → 触发跨章
+    //   这排除了"正常翻到边界"的情况（那种情况页码会变化）
+    if (onReachStart != null || onReachEnd != null) {
+        LaunchedEffect(pagerState) {
+            var scrollStartPage = -1
+
+            androidx.compose.runtime.snapshotFlow { pagerState.isScrollInProgress }
+                .distinctUntilChanged()
+                .collect { isScrolling ->
+                    if (isScrolling) {
+                        // 记录滚动开始时的页码
+                        scrollStartPage = pagerState.currentPage
+                    } else {
+                        // 滚动结束 → 检测是否为越界操作
+                        val settledPage = pagerState.currentPage
+                        if (scrollStartPage == settledPage && scrollStartPage >= 0) {
+                            // 页码没变 → 用户可能尝试了越界
+                            if (settledPage == 0 && currentOnReachStart != null) {
+                                Log.d(TAG, "⬅️ 越界左滑: ch${chapterPages.chapterIndex} → 触发上一章")
+                                currentOnReachStart?.invoke()
+                            } else if (settledPage == pageCount - 1
+                                && currentOnReachEnd != null
+                                && pageCount > 1
+                            ) {
+                                Log.d(TAG, "➡️ 越界右滑: ch${chapterPages.chapterIndex} p${pageCount-1} → 触发下一章")
+                                currentOnReachEnd?.invoke()
+                            }
+                        }
+                        scrollStartPage = -1
+                    }
                 }
         }
     }

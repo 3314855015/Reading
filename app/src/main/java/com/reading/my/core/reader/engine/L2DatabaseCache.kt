@@ -76,20 +76,26 @@ class L2DatabaseCache(
         compute: suspend () -> ChapterPages,
     ): ChapterPages = withContext(Dispatchers.IO) {
         val cacheKey = buildCacheKey(bookId, chapterIndex, configHash)
+        val startTime = System.currentTimeMillis()
 
         // 1) 尝试从数据库读取
         val cached = dao.getByKey(cacheKey)
         if (cached != null && cached.configHash == configHash) {
-            Log.d(TAG, "L2 命中: $cacheKey (${cached.pageCount} 页)")
+            val elapsed = System.currentTimeMillis() - startTime
+            Log.d(TAG, "✅ L2 命中 [${elapsed}ms]: ch$chapterIndex (${cached.pageCount}页, key=$cacheKey)")
             return@withContext deserialize(cached.pageDataJson, chapterIndex)
         }
 
         // 2) 缓存未命中 → 执行分页计算
-        Log.d(TAG, "L2 未命中: $cacheKey → 执行分页")
+        Log.d(TAG, "❌ L2 未命中: ch$chapterIndex → 执行分页 (key=$cacheKey)")
+        val computeStart = System.currentTimeMillis()
         val result = compute()
+        val computeElapsed = System.currentTimeMillis() - computeStart
 
         // 3) 写入数据库
         putChapterPages(bookId, chapterIndex, configHash, result)
+        val totalElapsed = System.currentTimeMillis() - startTime
+        Log.d(TAG, "📝 L2 回源+写入完成 [${totalElapsed}ms]: ch$chapterIndex (${result.pageCount}页, 分页耗时=${computeElapsed}ms)")
 
         result
     }

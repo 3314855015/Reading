@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -58,7 +59,7 @@ import com.reading.my.ui.theme.TextSecondary
 fun BookDetailScreen(
     bookId: Long,
     onBack: () -> Unit = {},
-    onNavigateToReader: ((Chapter) -> Unit)? = null,  // ★ 新增：跳转阅读器
+    onNavigateToReader: ((List<Chapter>, chapterIndex: Int) -> Unit)? = null,  // ★ 跳转阅读器（带完整章节列表）
     viewModel: BookDetailViewModel = hiltViewModel()
 ) {
     // 加载书籍详情和章节列表
@@ -97,9 +98,9 @@ fun BookDetailScreen(
                 BookDetailContent(
                     book = uiState.book!!,
                     chapters = uiState.chapters,
-                    onChapterClick = { chapter ->
+                    onChapterClick = { chapter, index ->
                         if (onNavigateToReader != null) {
-                            onNavigateToReader(chapter)
+                            onNavigateToReader(uiState.chapters, index)
                         } else {
                             viewModel.selectChapter(chapter)
                         }
@@ -118,7 +119,7 @@ fun BookDetailScreen(
 private fun BookDetailContent(
     book: Book,
     chapters: List<Chapter>,
-    onChapterClick: (Chapter) -> Unit,
+    onChapterClick: (Chapter, Int) -> Unit,
     selectedChapter: Chapter?,
     onBack: () -> Unit,
 ) {
@@ -209,8 +210,8 @@ private fun BookDetailContent(
                         )
                     }
                 }
-                items(chapters, key = { it.chapterIndex }) { chapter ->
-                    ChapterItemRow(chapter = chapter, onClick = { onChapterClick(chapter) })
+                itemsIndexed(chapters, key = { _, chapter -> chapter.chapterIndex }) { index, chapter ->
+                    ChapterItemRow(chapter = chapter, onClick = { onChapterClick(chapter, index) })
                 }
             }
         }
