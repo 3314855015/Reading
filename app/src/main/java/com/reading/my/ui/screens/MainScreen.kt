@@ -52,7 +52,6 @@ import com.reading.my.ui.screens.bookshelf.BookshelfScreen
 import com.reading.my.ui.screens.bookshelf.BookDetailScreen
 import com.reading.my.domain.model.Chapter
 import com.reading.my.ui.screens.reader.ReaderScreen
-import com.reading.my.core.reader.engine.L2DatabaseCache
 
 /**
  * 主界面 - 底部导航容器
@@ -73,7 +72,6 @@ import com.reading.my.core.reader.engine.L2DatabaseCache
 fun MainScreen(
     userAvatarUrl: String? = null,
     onNavigateToLogin: () -> Unit = {},
-    l2Cache: L2DatabaseCache? = null,
 ) {
     val items = BottomNavItem.tabs
     var selectedRoute by remember { mutableStateOf(Screen.Bookshelf.route) }
@@ -140,8 +138,7 @@ fun MainScreen(
                             chapters = chapters,
                             currentChapterIndex = currentIdx,
                             bookTitle = "书籍",
-                            bookId = bookId?.toString() ?: "",  // 传入 bookId 以启用 L2 缓存
-                            l2Cache = l2Cache,
+                            bookId = bookId?.toString() ?: "",
                             onBack = { readerState = null },
                             onChapterChange = { newIdx ->
                                 readerState = chapters to newIdx

@@ -7,8 +7,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -17,32 +17,30 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
-import com.reading.my.core.reader.engine.L2DatabaseCache
-import com.reading.my.core.reader.engine.PageLayoutManager
+import androidx.hilt.navigation.compose.hiltViewModel
 import com.reading.my.core.reader.engine.RenderCache
-import com.reading.my.core.reader.domain.ChapterPages
 import com.reading.my.core.reader.domain.PageLayoutConfig
 import com.reading.my.core.reader.domain.ReaderTheme
 import com.reading.my.core.reader.ui.FlipPagerReader
 import com.reading.my.domain.model.Chapter
 
 /**
- * 阅读器主界面（Phase 6: 章节间跳转 + L2 缓存）
+ * 阅读器主界面（Phase 7: ViewModel 状态管理重构）
  *
- * 完整的阅读流程（三级缓存 + 跨章导航）：
- * 1. 打开章节 → 查询 L2 DatabaseCache（分页结果持久化）
- * 2. L2 未命中 → 执行 PageLayoutManager 分页 → 写入 L2
- * 3. 翻页渲染 → 查询 L1 RenderCache（内存 Bitmap）
- * 4. L1 未命中 → TextRender 渲染到 Bitmap → 写入 L1
- * 5. **章节边界**：首页往前滑 → 加载上一章末页；末页往后滑 → 加载下一章首页
+ * UI 层职责：
+ * 1. 观察 ReaderViewModel 的 StateFlow 渲染 UI
+ * 2. 处理 Compose 侧配置计算（config、theme、configHash）
+ * 3. 将用户操作（跨章翻页）委托给 ViewModel
  *
- * @param chapters        全部章节列表（用于跨章跳转，至少包含当前章）
- * @param currentChapterIndex 当前章节索引（用于定位）
+ * 业务逻辑（章节切换、分页加载、目标页解析）全部在 ReaderViewModel 中。
+ *
+ * @param chapters        全部章节列表（用于跨章跳转）
+ * @param currentChapterIndex 当前章节索引（初始定位）
  * @param bookTitle       书名（显示在顶部栏）
- * @param totalChapters   总章数（用于进度计算）
- * @param l2Cache         L2 二级缓存实例（可选，传入 null 则跳过数据库缓存）
- * @param onChapterChange 章节切换回调：(newChapterIndex) → Unit，外部据此更新 UI
- * @param onBack          返回上一级（详情页/书架）
+ * @param totalChapters   总章数（用于进度计算，可选）
+ * @param bookId          书籍 ID（L2 缓存 key）
+ * @param onChapterChange 章节切换回调：(newChapterIndex) → Unit
+ * @param onBack          返回上一级
  * @param onPageChange    翻页回调：(chapterIndex, pageIndex) → Unit
  */
 @Composable
@@ -52,21 +50,22 @@ fun ReaderScreen(
     bookTitle: String,
     totalChapters: Int = 1,
     bookId: String = "",
-    l2Cache: L2DatabaseCache? = null,
     onChapterChange: ((newChapterIndex: Int) -> Unit)? = null,
     onBack: () -> Unit = {},
     onPageChange: ((chapterIndex: Int, pageIndex: Int) -> Unit)? = null,
+    viewModel: ReaderViewModel = hiltViewModel(),
 ) {
     val configuration = LocalConfiguration.current
-    val density = LocalDensity.current.density
+    val density = LocalDensity.current
 
     // ---- 构建排版配置 ----
     val systemBarsHeightDp = 48f
+    val densityVal = density.density
     val config = remember {
         PageLayoutConfig.default(
-            screenWidthPx = (configuration.screenWidthDp * density).toInt(),
-            screenHeightPx = ((configuration.screenHeightDp - systemBarsHeightDp) * density).toInt(),
-            density = density,
+            screenWidthPx = (configuration.screenWidthDp * densityVal).toInt(),
+            screenHeightPx = ((configuration.screenHeightDp - systemBarsHeightDp) * densityVal).toInt(),
+            density = densityVal,
         )
     }
 
@@ -78,46 +77,21 @@ fun ReaderScreen(
         RenderCache.computeConfigHash(config, theme)
     }
 
-    // ---- 当前活跃章节状态 ----
-    var activeChapterIndex by remember { mutableIntStateOf(currentChapterIndex) }
-    var chapterPages by remember { mutableStateOf<ChapterPages?>(null) }
-    var isLoading by remember { mutableStateOf(true) }
-    // 跨章跳转方向：true=显示末页(从下章返回), false=显示首页(正常/从上章进入)
-    var jumpToLastPage by remember { mutableStateOf(false) }
-
-    // 获取当前章节对象
-    val currentChapter = remember(chapters, activeChapterIndex) {
-        chapters.getOrNull(activeChapterIndex)
+    // ---- 初始化 ViewModel（仅首次或章节列表变化时执行）----
+    LaunchedEffect(chapters, currentChapterIndex, bookId) {
+        viewModel.initReader(chapters, currentChapterIndex, bookId)
+        viewModel.setConfig(config, theme)
     }
 
-    // ---- 分页逻辑（当章节或 configHash 变化时重新执行）----
-    LaunchedEffect(currentChapter, configHash) {
-        if (currentChapter == null) {
-            return@LaunchedEffect
-        }
+    // ---- 当章节或 config 变化时加载分页数据 ----
+    LaunchedEffect(viewModel.uiState.value.activeChapterIndex, configHash) {
+        viewModel.loadCurrentChapter(configHash)
+    }
 
-        isLoading = true
-        try {
-            val result = if (l2Cache != null && bookId.isNotEmpty()) {
-                l2Cache.getChapterPages(
-                    bookId = bookId,
-                    chapterIndex = currentChapter.chapterIndex,
-                    configHash = configHash,
-                    compute = {
-                        val layoutManager = PageLayoutManager(config)
-                        layoutManager.paginateChapter(currentChapter.chapterIndex, currentChapter.content)
-                    },
-                )
-            } else {
-                val layoutManager = PageLayoutManager(config)
-                layoutManager.paginateChapter(currentChapter.chapterIndex, currentChapter.content)
-            }
-            chapterPages = result
-        } catch (e: Exception) {
-            chapterPages = null
-        } finally {
-            isLoading = false
-        }
+    // ---- 观察状态 ----
+    val uiState by viewModel.uiState.collectAsState()
+    val currentChapter = remember(chapters, uiState.activeChapterIndex) {
+        chapters.getOrNull(uiState.activeChapterIndex)
     }
 
     // ---- UI 渲染 ----
@@ -127,28 +101,26 @@ fun ReaderScreen(
             .background(color = theme.backgroundColor)
     ) {
         when {
-            isLoading -> {
+            uiState.isLoading -> {
                 CircularProgressIndicator(modifier = Modifier.matchParentSize())
             }
-            chapterPages != null && currentChapter != null -> {
+            uiState.chapterPages != null && currentChapter != null -> {
                 ReaderContent(
                     chapter = currentChapter!!,
-                    chapterPages = chapterPages!!,
+                    chapterPages = uiState.chapterPages!!,
                     chapters = chapters,
-                    activeChapterIndex = activeChapterIndex,
-                    initialPage = if (jumpToLastPage) (chapterPages!!.pageCount - 1).coerceAtLeast(0) else 0,
+                    activeChapterIndex = uiState.activeChapterIndex,
+                    initialPage = uiState.targetInitialPage,
                     onActiveChapterChanged = { newIndex ->
-                        activeChapterIndex = newIndex
+                        // 外部回调通知（MainScreen 更新 readerState）
                         onChapterChange?.invoke(newIndex)
                     },
-                    onJumpDirectionSet = { toLast -> jumpToLastPage = toLast },
+                    onNavigatePrev = { viewModel.navigateToPrevChapter() },
+                    onNavigateNext = { viewModel.navigateToNextChapter() },
                     config = config,
                     theme = theme,
-                    configHash = configHash,
                     bookTitle = bookTitle,
-                    totalChapters = totalChapters,
-                    bookId = bookId,
-                    l2Cache = l2Cache,
+                    totalChapters = totalChapters.coerceAtLeast(chapters.size),
                     onBack = onBack,
                     onPageChange = onPageChange,
                 )
@@ -163,19 +135,17 @@ fun ReaderScreen(
 @Composable
 private fun ReaderContent(
     chapter: Chapter,
-    chapterPages: ChapterPages,
+    chapterPages: com.reading.my.core.reader.domain.ChapterPages,
     chapters: List<Chapter>,
     activeChapterIndex: Int,
     initialPage: Int = 0,
     onActiveChapterChanged: (newIndex: Int) -> Unit,
-    onJumpDirectionSet: ((toLast: Boolean) -> Unit)? = null,
-    config: PageLayoutConfig,
+    onNavigatePrev: () -> Unit,
+    onNavigateNext: () -> Unit,
+    config: com.reading.my.core.reader.domain.PageLayoutConfig,
     theme: ReaderTheme,
-    configHash: Int,
     bookTitle: String,
     totalChapters: Int,
-    bookId: String,
-    l2Cache: L2DatabaseCache?,
     onBack: () -> Unit,
     onPageChange: ((chapterIndex: Int, pageIndex: Int) -> Unit)?,
 ) {
@@ -197,25 +167,22 @@ private fun ReaderContent(
             chapterPages = chapterPages,
             config = config,
             theme = theme,
-            bookId = bookId,
             initialPage = initialPage,
             onPageChange = { pageIndex ->
                 onPageChange?.invoke(chapter.chapterIndex, pageIndex)
             },
             onReachStart = {
                 // 在首页继续左滑 → 跳到上章**末页**
-                val prevIndex = activeChapterIndex - 1
-                if (prevIndex >= 0 && prevIndex < chapters.size) {
-                    onJumpDirectionSet?.invoke(true)   // 显示目标章的末页
-                    onActiveChapterChanged(prevIndex)
+                if (activeChapterIndex > 0) {
+                    onNavigatePrev()
+                    onActiveChapterChanged(activeChapterIndex - 1)
                 }
             },
             onReachEnd = {
                 // 在末页继续右滑 → 跳到下章**首页**
-                val nextIndex = activeChapterIndex + 1
-                if (nextIndex >= 0 && nextIndex < chapters.size) {
-                    onJumpDirectionSet?.invoke(false)  // 显示目标章的首页
-                    onActiveChapterChanged(nextIndex)
+                if (activeChapterIndex < chapters.size - 1) {
+                    onNavigateNext()
+                    onActiveChapterChanged(activeChapterIndex + 1)
                 }
             },
         )
