@@ -77,21 +77,21 @@ fun ReaderScreen(
         RenderCache.computeConfigHash(config, theme)
     }
 
-    // ---- 初始化 ViewModel（仅首次或章节列表变化时执行）----
-    LaunchedEffect(chapters, currentChapterIndex, bookId) {
+    // ---- 观察状态 ----
+    val uiState by viewModel.uiState.collectAsState()
+    val currentChapter = remember(chapters, uiState.activeChapterIndex) {
+        chapters.getOrNull(uiState.activeChapterIndex)
+    }
+
+    // ---- 初始化 ViewModel（仅首次 composition 时执行一次）----
+    LaunchedEffect(Unit) {
         viewModel.initReader(chapters, currentChapterIndex, bookId)
         viewModel.setConfig(config, theme)
     }
 
     // ---- 当章节或 config 变化时加载分页数据 ----
-    LaunchedEffect(viewModel.uiState.value.activeChapterIndex, configHash) {
+    LaunchedEffect(uiState.activeChapterIndex, configHash) {
         viewModel.loadCurrentChapter(configHash)
-    }
-
-    // ---- 观察状态 ----
-    val uiState by viewModel.uiState.collectAsState()
-    val currentChapter = remember(chapters, uiState.activeChapterIndex) {
-        chapters.getOrNull(uiState.activeChapterIndex)
     }
 
     // ---- UI 渲染 ----
