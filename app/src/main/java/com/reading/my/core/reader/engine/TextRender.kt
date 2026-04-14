@@ -1,5 +1,6 @@
 package com.reading.my.core.reader.engine
 
+import android.graphics.Canvas
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.nativeCanvas
@@ -152,4 +153,93 @@ object TextRender {
         ((color.red * 255f).toInt() shl 16) or
         ((color.green * 255f).toInt() shl 8) or
         (color.blue * 255f).toInt()
+
+    /**
+     * 在原生 Android Canvas 上渲染一页文本（用于离屏 Bitmap 缓存）
+     *
+     * 与 [renderPage] 功能完全一致，但不依赖 Compose DrawScope，
+     * 可直接在任意 Canvas（包括离屏 Bitmap 的 Canvas）上绘制。
+     */
+    fun renderPageOnCanvas(
+        canvas: Canvas,
+        page: Page,
+        config: PageLayoutConfig,
+        theme: ReaderTheme,
+    ) {
+        val pageText = page.text
+        if (pageText.isBlank()) return
+
+        val paint = android.graphics.Paint().apply {
+            color = colorToArgb(theme.textColor)
+            textSize = config.fontSizePx
+            isAntiAlias = true
+        }
+
+        val canvasWidth = config.screenWidthPx.toFloat()
+        val canvasHeight = config.screenHeightPx.toFloat()
+        val maxDrawX = canvasWidth - config.horizontalPaddingPx
+        val maxDrawY = canvasHeight - config.verticalPaddingPx
+
+        val blankLineSpacingRatio = config.blankLineSpacingRatio
+        val paraEndSpacingRatio = config.paraEndSpacingRatio
+
+        val lines = pageText.split('\n')
+        var y = config.verticalPaddingPx + config.lineHeightPx
+
+        for ((lineIndex, line) in lines.withIndex()) {
+            if (line.isBlank()) {
+                y += config.lineHeightPx * blankLineSpacingRatio
+                continue
+            }
+            if (y > maxDrawY) break
+
+            val isFirstLineOfPage = (lineIndex == 0)
+            val prevLineIsBlank = (lineIndex > 0 && lines[lineIndex - 1].isBlank())
+
+            val shouldIndent = when {
+                page.isContinuation && isFirstLineOfPage -> false
+                isFirstLineOfPage || prevLineIsBlank -> true
+                else -> false
+            }
+
+            val indentPx = if (shouldIndent && config.firstLineIndentChars > 0)
+                config.firstLineIndentPx
+            else
+                0f
+
+            var x = config.horizontalPaddingPx + indentPx
+            var remainingWidth = maxDrawX - x
+
+            var i = 0
+            while (i < line.length) {
+                var fitCount = paint.breakText(line.substring(i), true, remainingWidth, null)
+
+                if (fitCount in 1 until (line.length - i)) {
+                    val nextChar = line[i + fitCount]
+                    if (nextChar in FORBIDDEN_START_CHARS) {
+                        fitCount--
+                    }
+                }
+
+                if (fitCount <= 0) {
+                    canvas.drawText(line[i].toString(), x, y, paint)
+                    i += 1
+                } else {
+                    canvas.drawText(line.substring(i, i + fitCount), x, y, paint)
+                    i += fitCount
+                }
+
+                y += config.lineHeightPx
+
+                if (y > maxDrawY) break
+
+                x = config.horizontalPaddingPx
+                remainingWidth = maxDrawX - x
+            }
+
+            if (y <= maxDrawY) {
+                y += config.lineHeightPx * paraEndSpacingRatio
+            }
+        }
+    }
 }

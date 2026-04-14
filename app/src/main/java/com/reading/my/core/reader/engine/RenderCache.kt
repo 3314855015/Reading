@@ -5,7 +5,6 @@ import android.util.LruCache
 import com.reading.my.core.reader.domain.Page
 import com.reading.my.core.reader.domain.PageLayoutConfig
 import com.reading.my.core.reader.domain.ReaderTheme
-import kotlin.math.min
 
 /**
  * L1 内存渲染缓存（Phase 3）
@@ -179,8 +178,8 @@ object RenderCache {
         hash = 31 * hash + config.firstLineIndentChars
         hash = 31 * hash + config.blankLineSpacingRatio.toBits()
         hash = 31 * hash + config.paraEndSpacingRatio.toBits()
-        hash = 31 * hash + colorToArgb(theme.textColor)
-        hash = 31 * hash + colorToArgb(theme.backgroundColor)
+        hash = 31 * hash + TextRender.colorToArgb(theme.textColor)
+        hash = 31 * hash + TextRender.colorToArgb(theme.backgroundColor)
         return hash
     }
 
