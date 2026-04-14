@@ -1,6 +1,5 @@
 package com.reading.my.ui.screens.reader
 
-import android.util.Log
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
@@ -94,7 +93,6 @@ fun ReaderScreen(
     // ---- 分页逻辑（当章节或 configHash 变化时重新执行）----
     LaunchedEffect(currentChapter, configHash) {
         if (currentChapter == null) {
-            Log.w("ReaderScreen", "activeChapterIndex=$activeChapterIndex 但章节不存在")
             return@LaunchedEffect
         }
 
@@ -114,10 +112,8 @@ fun ReaderScreen(
                 val layoutManager = PageLayoutManager(config)
                 layoutManager.paginateChapter(currentChapter.chapterIndex, currentChapter.content)
             }
-            Log.d("ReaderScreen", "✅ 分页完成: ch${currentChapter.chapterIndex} ${result.pageCount}页")
             chapterPages = result
         } catch (e: Exception) {
-            Log.e("ReaderScreen", "分页失败 ch${currentChapter?.chapterIndex}", e)
             chapterPages = null
         } finally {
             isLoading = false
@@ -142,7 +138,6 @@ fun ReaderScreen(
                     activeChapterIndex = activeChapterIndex,
                     initialPage = if (jumpToLastPage) (chapterPages!!.pageCount - 1).coerceAtLeast(0) else 0,
                     onActiveChapterChanged = { newIndex ->
-                        Log.d("ReaderScreen", "🔄 章节切换: $activeChapterIndex → $newIndex")
                         activeChapterIndex = newIndex
                         onChapterChange?.invoke(newIndex)
                     },
@@ -210,23 +205,17 @@ private fun ReaderContent(
             onReachStart = {
                 // 在首页继续左滑 → 跳到上章**末页**
                 val prevIndex = activeChapterIndex - 1
-                Log.d("ReaderScreen", "⬅️ 边界触发：尝试上一章 ch$prevIndex")
                 if (prevIndex >= 0 && prevIndex < chapters.size) {
                     onJumpDirectionSet?.invoke(true)   // 显示目标章的末页
                     onActiveChapterChanged(prevIndex)
-                } else {
-                    Log.d("ReaderScreen", "已是第一章，无法往前翻")
                 }
             },
             onReachEnd = {
                 // 在末页继续右滑 → 跳到下章**首页**
                 val nextIndex = activeChapterIndex + 1
-                Log.d("ReaderScreen", "➡️ 边界触发：尝试下一章 ch$nextIndex")
                 if (nextIndex >= 0 && nextIndex < chapters.size) {
                     onJumpDirectionSet?.invoke(false)  // 显示目标章的首页
                     onActiveChapterChanged(nextIndex)
-                } else {
-                    Log.d("ReaderScreen", "已是最后一章，无法往后翻")
                 }
             },
         )

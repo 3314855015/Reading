@@ -15,11 +15,7 @@ import com.reading.my.core.reader.domain.PageLayoutConfig
 import com.reading.my.core.reader.domain.ReaderTheme
 import com.reading.my.core.reader.engine.BookPageRenderer
 import kotlinx.coroutines.flow.distinctUntilChanged
-import android.util.Log
 
-private const val TAG = "FlipPager"
-
-/** 翻页模式枚举 */
 enum class FlipMode {
     HORIZONTAL,
     SCROLL,
@@ -75,13 +71,12 @@ fun FlipPagerReader(
     val currentOnReachStart by rememberUpdatedState(onReachStart)
     val currentOnReachEnd by rememberUpdatedState(onReachEnd)
 
-    // ---- 1) 正常翻页日志 + 回调 ----
+    // ---- 1) 正常翻页回调 ----
     if (onPageChange != null) {
         LaunchedEffect(pagerState) {
             androidx.compose.runtime.snapshotFlow { pagerState.currentPage }
                 .distinctUntilChanged()
                 .collect { page ->
-                    Log.d(TAG, "翻页: ch${chapterPages.chapterIndex} p$page/${pageCount-1}")
                     onPageChange(page)
                 }
         }
@@ -105,15 +100,13 @@ fun FlipPagerReader(
                         // 滚动结束 → 检测是否为越界操作
                         val settledPage = pagerState.currentPage
                         if (scrollStartPage == settledPage && scrollStartPage >= 0) {
-                            // 页码没变 → 用户可能尝试了越界
+                            // 页码没变 → 用户尝试了越界
                             if (settledPage == 0 && currentOnReachStart != null) {
-                                Log.d(TAG, "⬅️ 越界左滑: ch${chapterPages.chapterIndex} → 触发上一章")
                                 currentOnReachStart?.invoke()
                             } else if (settledPage == pageCount - 1
                                 && currentOnReachEnd != null
                                 && pageCount > 1
                             ) {
-                                Log.d(TAG, "➡️ 越界右滑: ch${chapterPages.chapterIndex} p${pageCount-1} → 触发下一章")
                                 currentOnReachEnd?.invoke()
                             }
                         }

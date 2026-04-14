@@ -1,7 +1,6 @@
 package com.reading.my.core.reader.engine
 
 import android.graphics.Bitmap
-import android.util.Log
 import android.util.LruCache
 import com.reading.my.core.reader.domain.Page
 import com.reading.my.core.reader.domain.PageLayoutConfig
@@ -28,8 +27,6 @@ import com.reading.my.core.reader.domain.ReaderTheme
  * ```
  */
 object RenderCache {
-
-    private const val TAG = "L1RenderCache"
 
     /** 缓存 key：唯一标识一页的渲染结果 */
     private data class CacheKey(
@@ -82,7 +79,6 @@ object RenderCache {
     ): Bitmap {
         // 书籍切换 → 清空旧缓存
         if (activeBookId != bookId) {
-            Log.d(TAG, "书籍切换: $activeBookId → $bookId, 清空 L1 缓存")
             clear()
             activeBookId = bookId
         }
@@ -91,15 +87,12 @@ object RenderCache {
 
         val cached = lruCache.get(key)
         if (cached != null) {
-            Log.d(TAG, "L1 命中: $key (ch$chapterIndex p$pageIndex)")
             return cached
         }
 
         // 缓存未命中 → 渲染并写入
-        Log.d(TAG, "L1 未命中 → 渲染中: ch$chapterIndex p$pageIndex")
         val bitmap = renderer()
         lruCache.put(key, bitmap)
-        Log.d(TAG, "L1 已缓存: $key (${bitmap.byteCount / 1024}KB) | stats=${stats()}")
         return bitmap
     }
 
@@ -131,10 +124,8 @@ object RenderCache {
 
     /** 清空全部缓存（切换书籍 / 排版参数大变时调用） */
     fun clear() {
-        val before = lruCache.size()
         lruCache.evictAll()
         activeBookId = null
-        Log.d(TAG, "L1 全量清空 (释放 ${before} 项)")
     }
 
     /** 仅移除指定章节的缓存（章节内容变化时） */

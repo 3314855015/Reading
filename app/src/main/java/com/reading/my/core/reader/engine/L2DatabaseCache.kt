@@ -76,26 +76,18 @@ class L2DatabaseCache(
         compute: suspend () -> ChapterPages,
     ): ChapterPages = withContext(Dispatchers.IO) {
         val cacheKey = buildCacheKey(bookId, chapterIndex, configHash)
-        val startTime = System.currentTimeMillis()
 
         // 1) 尝试从数据库读取
         val cached = dao.getByKey(cacheKey)
         if (cached != null && cached.configHash == configHash) {
-            val elapsed = System.currentTimeMillis() - startTime
-            Log.d(TAG, "✅ L2 命中 [${elapsed}ms]: ch$chapterIndex (${cached.pageCount}页, key=$cacheKey)")
             return@withContext deserialize(cached.pageDataJson, chapterIndex)
         }
 
         // 2) 缓存未命中 → 执行分页计算
-        Log.d(TAG, "❌ L2 未命中: ch$chapterIndex → 执行分页 (key=$cacheKey)")
-        val computeStart = System.currentTimeMillis()
         val result = compute()
-        val computeElapsed = System.currentTimeMillis() - computeStart
 
         // 3) 写入数据库
         putChapterPages(bookId, chapterIndex, configHash, result)
-        val totalElapsed = System.currentTimeMillis() - startTime
-        Log.d(TAG, "📝 L2 回源+写入完成 [${totalElapsed}ms]: ch$chapterIndex (${result.pageCount}页, 分页耗时=${computeElapsed}ms)")
 
         result
     }
@@ -122,13 +114,11 @@ class L2DatabaseCache(
             createdAt = System.currentTimeMillis(),
         )
         dao.insertOrReplace(entity)
-        Log.d(TAG, "L2 写入: $cacheKey (${pages.pageCount} 页, ${json.length} bytes)")
     }
 
     /** 切换书籍时清理该书的全部缓存 */
     suspend fun evictBook(bookId: String) = withContext(Dispatchers.IO) {
-        val count = dao.deleteByBookId(bookId)
-        Log.d(TAG, "L2 清理书籍: $bookId ($count 条)")
+        dao.deleteByBookId(bookId)
     }
 
     /** 章节内容更新时清理该章缓存 */
@@ -136,14 +126,12 @@ class L2DatabaseCache(
         bookId: String,
         chapterIndex: Int,
     ) = withContext(Dispatchers.IO) {
-        val count = dao.deleteByBookAndChapter(bookId, chapterIndex)
-        Log.d(TAG, "L2 清理章节: $bookId/$chapterIndex ($count 条)")
+        dao.deleteByBookAndChapter(bookId, chapterIndex)
     }
 
     /** 排版参数大变时全量清空 */
     suspend fun clear() = withContext(Dispatchers.IO) {
         dao.deleteAll()
-        Log.d(TAG, "L2 全量清空")
     }
 
     // ==================== 内部方法 ====================
