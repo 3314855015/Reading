@@ -3,7 +3,6 @@ package com.reading.my.ui.screens.reader
 import android.util.DisplayMetrics
 import android.util.Log
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -11,7 +10,6 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -20,26 +18,28 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
-import androidx.core.content.ContextCompat.getSystemService
+import com.reading.my.core.reader.engine.L2DatabaseCache
 import com.reading.my.core.reader.engine.PageLayoutManager
-import com.reading.my.core.reader.engine.TextRender
+import com.reading.my.core.reader.engine.RenderCache
+import com.reading.my.core.reader.domain.ChapterPages
 import com.reading.my.core.reader.domain.PageLayoutConfig
 import com.reading.my.core.reader.domain.ReaderTheme
-import com.reading.my.core.reader.domain.ChapterPages
 import com.reading.my.core.reader.ui.FlipPagerReader
-import com.reading.my.core.reader.ui.FlipMode
-import com.reading.my.core.reader.ui.ScrollModeReader
 import com.reading.my.domain.model.Chapter
 
 /**
- * 阅读器主界面（Phase 4 核心组件）
+ * 阅读器主界面（Phase 5: 集成 L2 数据库缓存）
  *
- * 完整的阅读流程：
- * 接收章节内容 → 分页 → 渲染 → 翻页交互 → 进度回调
+ * 完整的阅读流程（三级缓存）：
+ * 1. 打开章节 → 查询 L2 DatabaseCache（分页结果持久化）
+ * 2. L2 未命中 → 执行 PageLayoutManager 分页 → 写入 L2
+ * 3. 翻页渲染 → 查询 L1 RenderCache（内存 Bitmap）
+ * 4. L1 未命中 → TextRender 渲染到 Bitmap → 写入 L1
  *
  * @param chapter       当前要阅读的章节（包含完整正文 content）
  * @param bookTitle     书名（显示在顶部栏）
  * @param totalChapters 总章数（用于进度计算）
+ * @param l2Cache       L2 二级缓存实例（可选，传入 null 则跳过数据库缓存）
  * @param onBack        返回上一级（详情页/书架）
  * @param onPageChange  翻页回调：(chapterIndex, pageIndex) → Unit
  */
@@ -48,7 +48,8 @@ fun ReaderScreen(
     chapter: Chapter,
     bookTitle: String,
     totalChapters: Int = 1,
-    bookId: String = "",          // 缓存隔离标识
+    bookId: String = "",
+    l2Cache: L2DatabaseCache? = null,
     onBack: () -> Unit = {},
     onPageChange: ((chapterIndex: Int, pageIndex: Int) -> Unit)? = null,
 ) {
@@ -56,9 +57,6 @@ fun ReaderScreen(
     val density = LocalDensity.current.density
 
     // ---- 构建排版配置 ----
-    // 注意：使用 configuration.screenHeightDp 会包含系统状态栏和导航栏的高度，
-    // 但实际 Compose Canvas 绘制区域不含这些，会导致分页高度偏大、底部留白。
-    // 因此需要减去系统栏的预估高度（约 48dp：状态栏24dp + 导航栏24dp）
     val systemBarsHeightDp = 48f
     val config = remember {
         PageLayoutConfig.default(
@@ -71,18 +69,38 @@ fun ReaderScreen(
     // ---- 选择主题（默认日间） ----
     val theme = remember { ReaderTheme.DayLight }
 
-    // ---- 执行分页（仅当 chapter 变化时重新计算）----
-    var chapterPages by remember(chapter.chapterIndex, chapter.content) {
+    // ---- 计算配置哈希（L1/L2 共用）----
+    val configHash = remember(config, theme) {
+        RenderCache.computeConfigHash(config, theme)
+    }
+
+    // ---- 分页结果状态 ----
+    var chapterPages by remember(chapter.chapterIndex) {
         mutableStateOf<ChapterPages?>(null)
     }
     var isLoading by remember { mutableStateOf(true) }
 
-    LaunchedEffect(chapter) {
+    LaunchedEffect(chapter, configHash) {
         isLoading = true
         try {
-            val layoutManager = PageLayoutManager(config)
-            val result = layoutManager.paginateChapter(chapter.chapterIndex, chapter.content)
-            Log.d("ReaderScreen", "分页完成: ${result.pageCount}页")
+            val result = if (l2Cache != null && bookId.isNotEmpty()) {
+                // Phase 5: 优先从 L2 数据库缓存读取分页结果
+                l2Cache.getChapterPages(
+                    bookId = bookId,
+                    chapterIndex = chapter.chapterIndex,
+                    configHash = configHash,
+                    compute = {
+                        // 回源：执行实际分页计算
+                        val layoutManager = PageLayoutManager(config)
+                        layoutManager.paginateChapter(chapter.chapterIndex, chapter.content)
+                    },
+                )
+            } else {
+                // 无 L2 缓存：直接分页（降级兼容）
+                val layoutManager = PageLayoutManager(config)
+                layoutManager.paginateChapter(chapter.chapterIndex, chapter.content)
+            }
+            Log.d("ReaderScreen", "分页完成: ${result.pageCount}页 (source=${if (l2Cache != null && bookId.isNotEmpty()) "L2/direct" else "direct"})")
             chapterPages = result
         } catch (e: Exception) {
             Log.e("ReaderScreen", "分页失败", e)

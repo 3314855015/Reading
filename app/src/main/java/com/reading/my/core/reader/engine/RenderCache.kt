@@ -166,8 +166,11 @@ object RenderCache {
      *
      * 包含：屏幕尺寸、字号、行高倍率、边距、缩进、间距参数、文字颜色、背景色
      * 不包含：章节文本内容（由 chapterIndex+pageIndex 隐含）
+     *
+     * 该函数为 internal 可见性，供 L2DatabaseCache / ReaderScreen 复用以确保
+     * L1(内存Bitmap) 与 L2(数据库分页结果) 在排版参数变化时同步失效。
      */
-    private fun computeConfigHash(config: PageLayoutConfig, theme: ReaderTheme): Int {
+    internal fun computeConfigHash(config: PageLayoutConfig, theme: ReaderTheme): Int {
         var hash = 17
         hash = 31 * hash + config.screenWidthPx
         hash = 31 * hash + config.screenHeightPx
