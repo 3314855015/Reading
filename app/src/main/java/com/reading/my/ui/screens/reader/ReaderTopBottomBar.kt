@@ -39,6 +39,7 @@ import com.reading.my.core.reader.domain.ReaderTheme
  */
 @Composable
 fun ReaderTopBar(
+    modifier: Modifier = Modifier,
     bookTitle: String,
     chapterTitle: String,
     currentChapter: Int,
@@ -48,7 +49,7 @@ fun ReaderTopBar(
     onClose: () -> Unit,
 ) {
     Column(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .background(Color.Black.copy(alpha = 0.4f))
             .clickable(onClick = onClose),
@@ -125,11 +126,12 @@ fun ReaderTopBar(
  */
 @Composable
 fun ReaderBottomBar(
+    modifier: Modifier = Modifier,
     theme: ReaderTheme,
     onClose: () -> Unit,
 ) {
     Row(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .background(theme.barBackgroundColor.copy(alpha = 0.95f))
             .clickable(onClick = onClose)

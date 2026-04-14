@@ -15,6 +15,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
@@ -162,6 +163,7 @@ private fun ReaderContent(
         // ===== 顶部信息栏（可隐藏） =====
         if (showBars) {
             ReaderTopBar(
+                modifier = Modifier.align(Alignment.TopCenter),
                 bookTitle = bookTitle,
                 chapterTitle = chapter.title,
                 currentChapter = chapter.chapterIndex + 1,
@@ -175,6 +177,7 @@ private fun ReaderContent(
         // ===== 底部信息栏（可隐藏） =====
         if (showBars) {
             ReaderBottomBar(
+                modifier = Modifier.align(Alignment.BottomCenter),
                 theme = theme,
                 onClose = { showBars = false },
             )
