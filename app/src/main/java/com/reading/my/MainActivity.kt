@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Scaffold
 import androidx.compose.ui.Modifier
 import androidx.navigation.compose.rememberNavController
+import com.reading.my.core.reader.engine.L2DatabaseCache
 import com.reading.my.data.local.UserSessionManager
 import com.reading.my.ui.navigation.NavGraph
 import com.reading.my.ui.theme.ReadingTheme
@@ -18,6 +19,7 @@ import javax.inject.Inject
 class MainActivity : ComponentActivity() {
 
     @Inject lateinit var sessionManager: UserSessionManager  // ★ 注入 Session 管理器
+    @Inject lateinit var l2Cache: L2DatabaseCache          // ★ 注入 L2 缓存管理器
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -26,8 +28,8 @@ class MainActivity : ComponentActivity() {
             ReadingTheme {
                 val navController = rememberNavController()
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-                    // ★ 传入 sessionManager 实例（解决 isLoggedInFlow 实例访问问题）
-                    NavGraph(navController = navController, sessionManager = sessionManager)
+                    // ★ 传入 sessionManager + l2Cache 实例
+                    NavGraph(navController = navController, sessionManager = sessionManager, l2Cache = l2Cache)
                 }
             }
         }

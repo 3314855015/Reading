@@ -52,6 +52,7 @@ import com.reading.my.ui.screens.bookshelf.BookshelfScreen
 import com.reading.my.ui.screens.bookshelf.BookDetailScreen
 import com.reading.my.domain.model.Chapter
 import com.reading.my.ui.screens.reader.ReaderScreen
+import com.reading.my.core.reader.engine.L2DatabaseCache
 
 /**
  * 主界面 - 底部导航容器
@@ -71,15 +72,16 @@ import com.reading.my.ui.screens.reader.ReaderScreen
 @Composable
 fun MainScreen(
     userAvatarUrl: String? = null,
-    onNavigateToLogin: () -> Unit = {}
+    onNavigateToLogin: () -> Unit = {},
+    l2Cache: L2DatabaseCache? = null,
 ) {
     val items = BottomNavItem.tabs
     var selectedRoute by remember { mutableStateOf(Screen.Bookshelf.route) }
     
     // 书籍详情导航状态
     var selectedBookId by remember { mutableStateOf<Long?>(null) }
-    // 阅读器导航状态
-    var selectedChapterForReader by remember { mutableStateOf<Chapter?>(null) }
+    // 阅读器导航状态：(章节列表, 当前章节索引)
+    var readerState by remember { mutableStateOf<Pair<List<Chapter>, Int>?>(null) }
 
     Scaffold(
         modifier = Modifier.fillMaxSize(),
@@ -110,7 +112,7 @@ fun MainScreen(
                  )
         ) {
             AnimatedContent(
-                targetState = selectedChapterForReader to (selectedBookId to selectedRoute),
+                targetState = readerState to (selectedBookId to selectedRoute),
                 transitionSpec = {
                     // 进入详情页/阅读器：从右侧滑入 + 淡入
                     // 返回：向左滑出 + 淡出
@@ -127,16 +129,23 @@ fun MainScreen(
                     }
                 },
                 label = "pageTransition"
-            ) { (chapter, bookIdAndRoute) ->
+            ) { (readerData, bookIdAndRoute) ->
                 val (bookId, route) = bookIdAndRoute
 
                 when {
                     // 阅读器（最顶层）
-                    chapter != null -> {
+                    readerData != null -> {
+                        val (chapters, currentIdx) = readerData
                         ReaderScreen(
-                            chapter = chapter,
+                            chapters = chapters,
+                            currentChapterIndex = currentIdx,
                             bookTitle = "书籍",
-                            onBack = { selectedChapterForReader = null },
+                            bookId = bookId?.toString() ?: "",  // 传入 bookId 以启用 L2 缓存
+                            l2Cache = l2Cache,
+                            onBack = { readerState = null },
+                            onChapterChange = { newIdx ->
+                                readerState = chapters to newIdx
+                            },
                         )
                     }
                     // 书籍详情页（覆盖在书架之上）
@@ -144,7 +153,9 @@ fun MainScreen(
                         BookDetailScreen(
                             bookId = bookId,
                             onBack = { selectedBookId = null },
-                            onNavigateToReader = { ch -> selectedChapterForReader = ch }
+                            onNavigateToReader = { chapters, chapterIndex ->
+                                readerState = chapters to chapterIndex
+                            }
                         )
                     }
                     route == Screen.Bookshelf.route -> BookshelfTab(

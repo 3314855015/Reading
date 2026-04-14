@@ -21,6 +21,7 @@ import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import com.reading.my.data.local.UserSessionManager
+import com.reading.my.core.reader.engine.L2DatabaseCache
 import com.reading.my.ui.screens.MainScreen
 import com.reading.my.ui.screens.login.LoginScreen
 
@@ -37,7 +38,8 @@ import com.reading.my.ui.screens.login.LoginScreen
 @Composable
 fun NavGraph(
     navController: NavHostController,
-    sessionManager: UserSessionManager
+    sessionManager: UserSessionManager,
+    l2Cache: L2DatabaseCache? = null,
 ) {
     var isSessionChecked by remember { mutableStateOf(false) }
     var isLoggedIn by remember { mutableStateOf(false) }
@@ -73,7 +75,7 @@ fun NavGraph(
             }
 
             composable(Screen.Main.route) {
-                MainScreen()
+                MainScreen(l2Cache = l2Cache)
             }
         }
     }
