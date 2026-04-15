@@ -116,6 +116,21 @@ class L2DatabaseCache(
         dao.insertOrReplace(entity)
     }
 
+    /**
+     * 检查指定章节是否有缓存（同步查询，用于跨章跳转决策）
+     *
+     * @return true 表示缓存存在且 configHash 匹配
+     */
+    suspend fun hasCache(
+        bookId: String,
+        chapterIndex: Int,
+        configHash: Int,
+    ): Boolean = withContext(Dispatchers.IO) {
+        val cacheKey = buildCacheKey(bookId, chapterIndex, configHash)
+        val cached = dao.getByKey(cacheKey)
+        cached != null && cached.configHash == configHash
+    }
+
     /** 切换书籍时清理该书的全部缓存 */
     suspend fun evictBook(bookId: String) = withContext(Dispatchers.IO) {
         dao.deleteByBookId(bookId)

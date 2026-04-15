@@ -18,6 +18,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.hilt.navigation.compose.hiltViewModel
+import android.util.Log
 import com.reading.my.core.reader.engine.RenderCache
 import com.reading.my.core.reader.domain.PageLayoutConfig
 import com.reading.my.core.reader.domain.ReaderTheme
@@ -85,12 +86,14 @@ fun ReaderScreen(
 
     // ---- 初始化 ViewModel（仅首次 composition 时执行一次）----
     LaunchedEffect(Unit) {
+        Log.d("ReaderScreen", "🚀 LaunchedEffect(Unit): 初始化, currentChapterIndex=$currentChapterIndex, bookId='$bookId'")
         viewModel.initReader(chapters, currentChapterIndex, bookId)
         viewModel.setConfig(config, theme)
     }
 
     // ---- 当章节或 config 变化时加载分页数据 ----
     LaunchedEffect(uiState.activeChapterIndex, configHash) {
+        Log.d("ReaderScreen", "🔄 LaunchedEffect(chapter,configHash)触发: ch=${uiState.activeChapterIndex}, configHash=$configHash")
         viewModel.loadCurrentChapter(configHash)
     }
 
@@ -115,7 +118,7 @@ fun ReaderScreen(
                         // 外部回调通知（MainScreen 更新 readerState）
                         onChapterChange?.invoke(newIndex)
                     },
-                    onNavigatePrev = { viewModel.navigateToPrevChapter() },
+                    onNavigatePrev = { viewModel.navigateToPrevChapter(configHash) },
                     onNavigateNext = { viewModel.navigateToNextChapter() },
                     config = config,
                     theme = theme,
@@ -163,6 +166,8 @@ private fun ReaderContent(
             },
     ) {
         // ===== 翻页阅读区（带边界检测） =====
+        Log.d("ReaderScreen", "🎬 ReaderContent渲染: ch=$activeChapterIndex, initialPage=$initialPage, pages=${chapterPages.pageCount}")
+
         FlipPagerReader(
             chapterPages = chapterPages,
             config = config,
@@ -173,16 +178,20 @@ private fun ReaderContent(
             },
             onReachStart = {
                 // 在首页继续左滑 → 跳到上章**末页**
+                Log.d("ReaderScreen", "⬅️ onReachStart触发: 当前ch=$activeChapterIndex")
                 if (activeChapterIndex > 0) {
                     onNavigatePrev()
                     onActiveChapterChanged(activeChapterIndex - 1)
+                    Log.d("ReaderScreen", "⬅️ onReachStart: 已调用navigatePrev + onChapterChange(${activeChapterIndex - 1})")
                 }
             },
             onReachEnd = {
                 // 在末页继续右滑 → 跳到下章**首页**
+                Log.d("ReaderScreen", "➡️ onReachEnd触发: 当前ch=$activeChapterIndex")
                 if (activeChapterIndex < chapters.size - 1) {
                     onNavigateNext()
                     onActiveChapterChanged(activeChapterIndex + 1)
+                    Log.d("ReaderScreen", "➡️ onReachEnd: 已调用navigateNext + onChapterChange(${activeChapterIndex + 1})")
                 }
             },
         )

@@ -2,6 +2,7 @@ package com.reading.my.ui.screens.reader
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import android.util.Log
 import com.reading.my.core.reader.engine.L2DatabaseCache
 import com.reading.my.core.reader.engine.PageLayoutManager
 import com.reading.my.core.reader.engine.RenderCache
@@ -41,7 +42,9 @@ data class ReaderUiState(
      * - >0 → 具体页码（未来扩展：记住阅读位置）
      */
     val targetInitialPage: Int = 0,
-)
+) {
+    fun toLogStr(): String = "ch=$activeChapterIndex, pages=${chapterPages?.pageCount ?: "null"}, loading=$isLoading, target=$targetInitialPage"
+}
 
 @HiltViewModel
 class ReaderViewModel @Inject constructor(
@@ -65,6 +68,7 @@ class ReaderViewModel @Inject constructor(
      * @param bookId     书籍 ID（用于 L2 缓存 key）
      */
     fun initReader(chapters: List<Chapter>, startIndex: Int, bookId: String) {
+        Log.d("ReaderVM", "⚡ initReader called: startIndex=$startIndex, bookId='$bookId'")
         this.chapters = chapters
         this.bookId = bookId
         _uiState.value = ReaderUiState(
@@ -72,6 +76,7 @@ class ReaderViewModel @Inject constructor(
             isLoading = true,
             targetInitialPage = 0,
         )
+        Log.d("ReaderVM", "⚡ initReader done: ${_uiState.value.toLogStr()}")
     }
 
     /**
@@ -91,18 +96,28 @@ class ReaderViewModel @Inject constructor(
      * 加载完成后自动解析 targetInitialPage（-1 → 末页）。
      */
     fun loadCurrentChapter(configHash: Int) {
-        val currentConfig = config ?: return
-        val currentTheme = theme ?: return
+        val currentConfig = config ?: run {
+            Log.w("ReaderVM", "⚠️ loadCurrentChapter: config为null, 跳过")
+            return
+        }
+        val currentTheme = theme ?: run {
+            Log.w("ReaderVM", "⚠️ loadCurrentChapter: theme为null, 跳过")
+            return
+        }
         val currentChapters = chapters
         val state = _uiState.value
         val currentChapter = currentChapters.getOrNull(state.activeChapterIndex)
 
+        Log.d("ReaderVM", "📥 loadCurrentChapter入口: ch${state.activeChapterIndex}, configHash=$configHash, 当前状态=[${state.toLogStr()}]")
+
         if (currentChapter == null) {
+            Log.w("ReaderVM", "⚠️ loadCurrentChapter: chapter==null, active=${state.activeChapterIndex}")
             _uiState.value = state.copy(isLoading = false, chapterPages = null)
             return
         }
 
         viewModelScope.launch {
+            Log.d("ReaderVM", "📥 loadCurrentChapter协程启动: ch${state.activeChapterIndex}, 启动时状态=[${_uiState.value.toLogStr()}]")
             _uiState.update { it.copy(isLoading = true) }
 
             try {
@@ -128,10 +143,13 @@ class ReaderViewModel @Inject constructor(
                 }
 
                 // 解析目标初始页码：-1 表示末页
-                val resolvedInitialPage = when (_uiState.value.targetInitialPage) {
+                val rawTarget = _uiState.value.targetInitialPage
+                val resolvedInitialPage = when (rawTarget) {
                     -1 -> (result.pageCount - 1).coerceAtLeast(0)
-                    else -> _uiState.value.targetInitialPage.coerceAtLeast(0)
+                    else -> rawTarget.coerceAtLeast(0)
                 }
+
+                Log.d("ReaderVM", "📄 loadCurrentChapter完成: ch${currentChapter.chapterIndex}, pageCount=${result.pageCount}, rawTarget=$rawTarget, resolved=$resolvedInitialPage, 写入前状态=[${_uiState.value.toLogStr()}]")
 
                 _uiState.update {
                     it.copy(
@@ -140,7 +158,9 @@ class ReaderViewModel @Inject constructor(
                         targetInitialPage = resolvedInitialPage,
                     )
                 }
+                Log.d("ReaderVM", "📄 loadCurrentChapter写入后: [${_uiState.value.toLogStr()}]")
             } catch (e: Exception) {
+                Log.e("ReaderVM", "❌ loadCurrentChapter异常: ${e.message}", e)
                 _uiState.update {
                     it.copy(isLoading = false, chapterPages = null)
                 }
@@ -149,22 +169,48 @@ class ReaderViewModel @Inject constructor(
     }
 
     /**
-     * 往回翻 → 跳到上一章**末页**
+     * 往回翻 → 跳到上一章
      *
-     * 原子操作：同时设置方向标记 + 切换章节 + 触发重载，
-     * 不存在 Compose recomposition 时序竞争。
+     * 策略（基于 L2 缓存存在性）：
+     * - L2 有缓存（用户读过该章）→ 跳到**末页**
+     * - L2 无缓存（用户未读/跳章）→ 跳到**首页**
+     *
+     * 原子操作：切换章节 + 触发重载，避免 Compose recomposition 时序竞争。
      */
-    fun navigateToPrevChapter() {
+    fun navigateToPrevChapter(configHash: Int = 0) {
         val state = _uiState.value
         val prevIndex = state.activeChapterIndex - 1
         if (prevIndex < 0 || prevIndex >= chapters.size) return
 
-        _uiState.value = state.copy(
-            activeChapterIndex = prevIndex,
-            chapterPages = null,
-            isLoading = true,
-            targetInitialPage = -1, // ★ 标记：加载完后显示末页
-        )
+        Log.d("ReaderVM", "🔍 navigateToPrevChapter入口: ch${state.activeChapterIndex}→ch$prevIndex, 当前状态=[${state.toLogStr()}]")
+
+        // 同步查询 L2 缓存决定跳转目标页
+        // 注意：这里 configHash 由调用方传入，若为 0 则默认走首页
+        viewModelScope.launch {
+            val prevChapter = chapters.getOrNull(prevIndex)
+            if (prevChapter == null) return@launch
+
+            Log.d("ReaderVM", "🔍 navigateToPrevChapter: ch${state.activeChapterIndex}→ch$prevIndex, bookId='$bookId', configHash=$configHash, l2Cache=${l2Cache != null}, 启动时状态=[${_uiState.value.toLogStr()}]")
+
+            // 检查上一章是否有 L2 缓存
+            val hasL2Cache = if (l2Cache != null && bookId.isNotEmpty() && configHash != 0) {
+                l2Cache.hasCache(bookId, prevChapter.chapterIndex, configHash)
+            } else false
+
+            val targetPage = if (hasL2Cache) -1 else 0 // -1=末页(已读), 0=首页(未读)
+
+            Log.d("ReaderVM", "✅ navigateToPrevChapter结果: hasL2Cache=$hasL2Cache, targetPage=$targetPage, 写入前=[${_uiState.value.toLogStr()}]")
+
+            _uiState.update {
+                it.copy(
+                    activeChapterIndex = prevIndex,
+                    chapterPages = null,
+                    isLoading = true,
+                    targetInitialPage = targetPage,
+                )
+            }
+            Log.d("ReaderVM", "✅ navigateToPrevChapter写入后: [${_uiState.value.toLogStr()}]")
+        }
     }
 
     /**
@@ -175,12 +221,15 @@ class ReaderViewModel @Inject constructor(
         val nextIndex = state.activeChapterIndex + 1
         if (nextIndex < 0 || nextIndex >= chapters.size) return
 
+        Log.d("ReaderVM", "🔜 navigateToNextChapter: ch${state.activeChapterIndex}→ch$nextIndex, 当前状态=[${state.toLogStr()}]")
+
         _uiState.value = state.copy(
             activeChapterIndex = nextIndex,
             chapterPages = null,
             isLoading = true,
             targetInitialPage = 0, // ★ 显示首页
         )
+        Log.d("ReaderVM", "🔜 navigateToNextChapter写入后: [${_uiState.value.toLogStr()}]")
     }
 
     /**

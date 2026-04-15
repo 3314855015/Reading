@@ -10,6 +10,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
+import android.util.Log
 import com.reading.my.core.reader.domain.ChapterPages
 import com.reading.my.core.reader.domain.PageLayoutConfig
 import com.reading.my.core.reader.domain.ReaderTheme
@@ -61,15 +62,30 @@ fun FlipPagerReader(
     onReachEnd: (() -> Unit)? = null,
 ) {
     val pageCount = chapterPages.pageCount.coerceAtLeast(1)
+    val resolvedInitialPage = initialPage.coerceIn(0, pageCount - 1)
 
     val pagerState = rememberPagerState(
-        initialPage = initialPage.coerceIn(0, pageCount - 1),
+        initialPage = 0, // ★ 始终从 0 开始，跨章跳页由下面的 scrollToPage 处理
         pageCount = { pageCount },
     )
 
     // 保持最新引用的回调（避免闭包捕获过期值）
     val currentOnReachStart by rememberUpdatedState(onReachStart)
     val currentOnReachEnd by rememberUpdatedState(onReachEnd)
+
+    // ---- 0) 跨章跳转到目标页 [TODO: 暂时禁用，scrollToPage 无效，待排查] ----
+    // 问题：rememberPagerState 的 initialPage 仅首次 composition 生效，
+    // 章节切换后 scrollToPage 似乎没有效果（可能 timing / pagerState 未 ready）
+    Log.d("FlipPager", "📌 FlipPagerReader: ch${chapterPages.chapterIndex}, pageCount=$pageCount, initialPage=$resolvedInitialPage, pagerState.currentPage=${pagerState.currentPage}")
+    /*
+    LaunchedEffect(chapterPages.chapterIndex, resolvedInitialPage) {
+        if (resolvedInitialPage != pagerState.currentPage) {
+            Log.d("FlipPager", "🎯 scrollToPage: ${pagerState.currentPage} → $resolvedInitialPage")
+            pagerState.scrollToPage(resolvedInitialPage)
+            Log.d("FlipPager", "🎯 scrollToPage done, currentPage=${pagerState.currentPage}")
+        }
+    }
+    */
 
     // ---- 1) 正常翻页回调 ----
     if (onPageChange != null) {
