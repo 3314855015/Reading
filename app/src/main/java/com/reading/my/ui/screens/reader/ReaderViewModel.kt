@@ -63,20 +63,30 @@ class ReaderViewModel @Inject constructor(
     /**
      * 初始化阅读器（从外部传入配置和初始章节）
      *
+     * 防覆盖策略：
+     * - Compose recomposition 导致 LaunchedEffect(Unit) 多次触发
+     * - 必须更新 activeChapterIndex（支持外部跳章：用户点第7章）
+     * - 但要保留 navigateToPrevChapter 设置的 targetInitialPage=-1（未解析的哨兵）
+     * - 已解析的实际值(如6)或默认值(0) → 安全重置为0
+     *
      * @param chapters   全部章节列表
      * @param startIndex 初始章节索引
      * @param bookId     书籍 ID（用于 L2 缓存 key）
      */
     fun initReader(chapters: List<Chapter>, startIndex: Int, bookId: String) {
-        Log.d("ReaderVM", "⚡ initReader called: startIndex=$startIndex, bookId='$bookId'")
+        Log.d("ReaderVM", "⚡ initReader: startIndex=$startIndex, bookId='$bookId', 当前=[${_uiState.value.toLogStr()}]")
         this.chapters = chapters
         this.bookId = bookId
+
+        // 仅保留未解析的哨兵值(-1)，其他情况重置为0
+        val preservedTarget = _uiState.value.targetInitialPage.takeIf { it == -1 } ?: 0
+
         _uiState.value = ReaderUiState(
             activeChapterIndex = startIndex.coerceIn(0, chapters.size - 1),
             isLoading = true,
-            targetInitialPage = 0,
+            targetInitialPage = preservedTarget,
         )
-        Log.d("ReaderVM", "⚡ initReader done: ${_uiState.value.toLogStr()}")
+        Log.d("ReaderVM", "⚡ initReader done: ${_uiState.value.toLogStr()} (preservedTarget=$preservedTarget)")
     }
 
     /**

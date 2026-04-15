@@ -73,19 +73,31 @@ fun FlipPagerReader(
     val currentOnReachStart by rememberUpdatedState(onReachStart)
     val currentOnReachEnd by rememberUpdatedState(onReachEnd)
 
-    // ---- 0) 跨章跳转到目标页 [TODO: 暂时禁用，scrollToPage 无效，待排查] ----
-    // 问题：rememberPagerState 的 initialPage 仅首次 composition 生效，
-    // 章节切换后 scrollToPage 似乎没有效果（可能 timing / pagerState 未 ready）
-    Log.d("FlipPager", "📌 FlipPagerReader: ch${chapterPages.chapterIndex}, pageCount=$pageCount, initialPage=$resolvedInitialPage, pagerState.currentPage=${pagerState.currentPage}")
-    /*
+    // ---- 0) 跨章跳转到目标页 [Bug2: scrollToPage 排查中] ----
+    Log.d("FlipPager", "📌 FlipPagerReader入口: ch${chapterPages.chapterIndex}, pageCount=$pageCount, initialPage=$resolvedInitialPage, pager.currentPage=${pagerState.currentPage}")
+
     LaunchedEffect(chapterPages.chapterIndex, resolvedInitialPage) {
-        if (resolvedInitialPage != pagerState.currentPage) {
-            Log.d("FlipPager", "🎯 scrollToPage: ${pagerState.currentPage} → $resolvedInitialPage")
-            pagerState.scrollToPage(resolvedInitialPage)
-            Log.d("FlipPager", "🎯 scrollToPage done, currentPage=${pagerState.currentPage}")
+        Log.d("FlipPager", "🎯 LaunchedEffect触发: chapter=${chapterPages.chapterIndex}, targetPage=$resolvedInitialPage")
+        Log.d("FlipPager", "🎯 触发时pagerState: currentPage=${pagerState.currentPage}, pageCount=${pagerState.pageCount}, canFwd=${pagerState.canScrollForward}, canBack=${pagerState.canScrollBackward}")
+
+        // 等待 pagerState 准备就绪
+        if (!pagerState.canScrollForward && !pagerState.canScrollBackward) {
+            Log.w("FlipPager", "⚠️ pagerState未ready: canFwd=false, canBack=false, 等待...")
         }
+
+        if (resolvedInitialPage != pagerState.currentPage) {
+            try {
+                Log.d("FlipPager", "🎯 执行scrollToPage: ${pagerState.currentPage} → $resolvedInitialPage")
+                pagerState.scrollToPage(resolvedInitialPage)
+                Log.d("FlipPager", "🎯 scrollToPage返回后: currentPage=${pagerState.currentPage}")
+            } catch (e: Exception) {
+                Log.e("FlipPager", "❌ scrollToPage异常: ${e.message}", e)
+            }
+        } else {
+            Log.d("FlipPager", "🏁 无需跳转: currentPage(${pagerState.currentPage}) == target($resolvedInitialPage)")
+        }
+        Log.d("FlipPager", "🎯 最终状态: currentPage=${pagerState.currentPage}, pageCount=${pagerState.pageCount}")
     }
-    */
 
     // ---- 1) 正常翻页回调 ----
     if (onPageChange != null) {
