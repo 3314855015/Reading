@@ -15,16 +15,15 @@ bin/
 gen/
 out/
 
-# Gradle files
+# Gradle
 .gradle/
 build/
 !gradle/wrapper/gradle-wrapper.jar
-
+gradle/wrapper/gradle-wrapper.properties
 # Gradle Wrapper (保留，因为项目有 gradlew)
 gradle/wrapper/gradle-wrapper.jar
-gradle/wrapper/gradle-wrapper.properties
 
-# IntelliJ IDEA
+# IntelliJ IDEA / Android Studio
 *.iml
 .idea/
 !.idea/compiler.xml
@@ -33,33 +32,37 @@ gradle/wrapper/gradle-wrapper.properties
 !.idea/misc.xml
 !.idea/vcs.xml
 
-# Android Studio / SDK
-/local.properties
+# ===== 敏感/本地配置 =====
+local.properties
 .sdk/
 
-# Keystore files (敏感文件不要提交)
+# 签名文件
 *.jks
 *.keystore
 *.p12
 
-# OSX
+# ===== 日志 =====
+*.log
+*.bak
+app/src/logs/
+
+# ===== OS =====
 .DS_Store
+Thumbs.db
+*~
+
+# External native build
+.cxx/
+.externalNativeBuild/
 
 # Eclipse
 .project
 .classpath
 .settings/
 
-# External native build
-.cxx
-.externalNativeBuild
-
-# Others
+# Captures
 captures/
-*.log
-*.bak
-*~
 
+# ===== 项目特定忽略 =====
 spec/
-测试docx导入渲染/_1772516010073.docx
-app/src/test/java/com/reading/my/core/reader/engine/PageLayoutManagerTest.kt
+测试docx导入渲染/
