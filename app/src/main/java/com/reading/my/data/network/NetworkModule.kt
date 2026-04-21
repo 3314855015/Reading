@@ -1,10 +1,9 @@
 package com.reading.my.data.network
 
-import android.content.Context
+import com.reading.my.data.local.UserSessionManager
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
-import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import kotlinx.serialization.json.Json
 import okhttp3.OkHttpClient
@@ -51,8 +50,8 @@ object NetworkModule {
 
     @Provides
     @Singleton
-    fun provideAuthInterceptor(@ApplicationContext context: Context): AuthInterceptor {
-        return AuthInterceptor(context)
+    fun provideAuthInterceptor(sessionManager: UserSessionManager): AuthInterceptor {
+        return AuthInterceptor(sessionManager)
     }
 
     @Provides

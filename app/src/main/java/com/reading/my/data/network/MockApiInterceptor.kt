@@ -29,7 +29,7 @@ class MockApiInterceptor : Interceptor {
         const val TAG = "MockApi"
         
         /** ★★ 开关：设为 false 即可切换到真实后端 ★★ */
-        var ENABLED = true
+        var ENABLED = false
         
         // Mock用户数据（模拟已登录状态）
         const val MOCK_USER_ID = 1L

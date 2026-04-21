@@ -1,41 +1,34 @@
 package com.reading.my.data.network
 
-import android.content.Context
+import com.reading.my.data.local.UserSessionManager
+import kotlinx.coroutines.flow.firstOrNull
+import kotlinx.coroutines.runBlocking
 import okhttp3.Interceptor
 import okhttp3.Response
 
 /**
  * Token认证拦截器
- * 自动为请求添加 Authorization: Bearer {token} 头
- *
- * 后端接入后，Token从本地存储读取即可
+ * 从 UserSessionManager (DataStore) 读取 accessToken，自动附加到请求头
  */
 class AuthInterceptor(
-    private val context: Context  // 后续替换为 TokenManager
+    private val sessionManager: UserSessionManager
 ) : Interceptor {
 
-    private var currentToken: String? = null
-
-    fun setToken(token: String?) {
-        currentToken = token
-    }
-
     override fun intercept(chain: Interceptor.Chain): Response {
-        val originalRequest = chain.request()
-
-        val requestWithAuth = if (!currentToken.isNullOrBlank()) {
-            originalRequest.newBuilder()
-                .header("Authorization", "Bearer $currentToken")
-                .header("X-Platform", "android")
-                .header("Accept-Language", "zh-CN")
-                .build()
-        } else {
-            originalRequest.newBuilder()
-                .header("X-Platform", "android")
-                .header("Accept-Language", "zh-CN")
-                .build()
+        val token = runBlocking {
+            sessionManager.sessionInfoFlow.firstOrNull()?.accessToken
         }
 
-        return chain.proceed(requestWithAuth)
+        val request = chain.request().newBuilder()
+            .apply {
+                if (!token.isNullOrBlank()) {
+                    header("Authorization", "Bearer $token")
+                }
+                header("X-Platform", "android")
+                header("Accept-Language", "zh-CN")
+            }
+            .build()
+
+        return chain.proceed(request)
     }
 }

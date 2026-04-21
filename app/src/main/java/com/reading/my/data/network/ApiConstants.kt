@@ -1,7 +1,9 @@
 package com.reading.my.data.network
 
 object ApiConstants {
-    const val BASE_URL = "https://api.reading.app/"
+    // 手机和电脑同一局域网，直连 Spring Boot（不需要 Nginx）
+    // 电脑 IPv4 地址 + Spring Boot 端口 8080
+    const val BASE_URL = "http://192.168.1.116:8080/"
     const val API_VERSION = "v1"
 
     // 认证接口
