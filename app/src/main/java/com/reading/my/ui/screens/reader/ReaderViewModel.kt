@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import android.util.Log
 import com.reading.my.core.reader.engine.L2DatabaseCache
+import com.reading.my.core.reader.engine.L3PreloadCache
 import com.reading.my.core.reader.engine.PageLayoutManager
 import com.reading.my.core.reader.engine.RenderCache
 import com.reading.my.core.reader.domain.ChapterPages
@@ -59,6 +60,9 @@ class ReaderViewModel @Inject constructor(
     private var bookId: String = ""
     private var config: PageLayoutConfig? = null
     private var theme: ReaderTheme? = null
+
+    /** L3 预加载缓存（仅在有 L2 时启用） */
+    private val l3Cache: L3PreloadCache? = if (l2Cache != null) L3PreloadCache(l2Cache) else null
 
     /**
      * 初始化阅读器（从外部传入配置和初始章节）
@@ -169,6 +173,9 @@ class ReaderViewModel @Inject constructor(
                     )
                 }
                 Log.d("ReaderVM", "📄 loadCurrentChapter写入后: [${_uiState.value.toLogStr()}]")
+
+                // ★ 触发L3预加载相邻章节
+                triggerL3Preload(currentChapter.chapterIndex, configHash)
             } catch (e: Exception) {
                 Log.e("ReaderVM", "❌ loadCurrentChapter异常: ${e.message}", e)
                 _uiState.update {
@@ -251,4 +258,64 @@ class ReaderViewModel @Inject constructor(
      * 获取总章数
      */
     fun getTotalChapters(): Int = chapters.size
+
+    // ==================== L3 预加载相关 ====================
+
+    /**
+     * 触发 L3 预加载：在当前章节加载完成后，后台预计算相邻章节的分页结果并写入 L2 DB
+     *
+     * @param currentChapterIndex 当前已加载完成的章节索引
+     * @param configHash         当前排版配置哈希值
+     */
+    private fun triggerL3Preload(currentChapterIndex: Int, configHash: Int) {
+        val l3 = l3Cache ?: return
+        val cfg = config ?: return
+        val thm = theme ?: return
+
+        if (chapters.isEmpty() || bookId.isEmpty()) return
+
+        Log.d("ReaderVM", "🚀 triggerL3Preload: ch=$currentChapterIndex, hash=$configHash")
+
+        // 使用 viewModelScope 确保生命周期绑定
+        l3Cache!!.onChapterChanged(chapters, currentChapterIndex, bookId)
+
+        // 逐章执行预加载（传入完整的分页计算闭包）
+        viewModelScope.launch {
+            val targets = buildList {
+                // 向后预加载下一章
+                val nextIdx = currentChapterIndex + 1
+                if (nextIdx < chapters.size) add(nextIdx)
+                // 向前预加载上一章
+                val prevIdx = currentChapterIndex - 1
+                if (prevIdx >= 0) add(prevIdx)
+            }
+
+            for (targetIdx in targets.sortedBy { kotlin.math.abs(it - currentChapterIndex) }) {
+                val targetChapter = chapters.getOrNull(targetIdx) ?: continue
+                try {
+                    l3.preloadWithConfig(
+                        chapter = targetChapter,
+                        bookId = bookId,
+                        configHash = configHash,
+                        compute = {
+                            val layoutManager = PageLayoutManager(cfg)
+                            layoutManager.paginateChapter(
+                                targetChapter.chapterIndex,
+                                targetChapter.content
+                            )
+                        },
+                    )
+                } catch (e: Exception) {
+                    Log.w("ReaderVM", "⚠️ L3预加载异常 ch${targetChapter.chapterIndex}: ${e.message}")
+                }
+            }
+            Log.d("ReaderVM", "🚀 L3本轮预加载全部完成: ${l3.debugInfo()}")
+        }
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        l3Cache?.cancelAll()
+        Log.d("ReaderVM", "🗑️ ReaderVM cleared, L3已释放")
+    }
 }
