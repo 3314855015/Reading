@@ -61,4 +61,10 @@ interface BookRepository {
 
     /** 清空所有本地书籍 */
     suspend fun deleteAllBooks()
+
+    /** 更新书籍标题和简介（本地持久化） */
+    suspend fun updateBookMeta(bookId: Long, title: String, description: String?)
+
+    /** 更新书籍封面路径（本地持久化） */
+    suspend fun updateBookCover(bookId: Long, coverPath: String)
 }

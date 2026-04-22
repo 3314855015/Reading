@@ -197,9 +197,21 @@ class BookRepositoryImpl @Inject constructor(
     }
 
     override suspend fun deleteAllBooks() {
-        chapterDao.deleteChaptersByBookId(0) // 不支持批量，逐本删
+        chapterDao.deleteChaptersByBookId(0)
         localBookDao.deleteAll()
         Log.d(TAG, "已清空所有本地书籍")
+    }
+
+    override suspend fun updateBookMeta(bookId: Long, title: String, description: String?) {
+        val entity = localBookDao.getBookById(bookId) ?: return
+        localBookDao.updateBook(entity.copy(title = title, description = description))
+        Log.d(TAG, "已更新书籍元数据: bookId=$bookId, title=$title")
+    }
+
+    override suspend fun updateBookCover(bookId: Long, coverPath: String) {
+        val entity = localBookDao.getBookById(bookId) ?: return
+        localBookDao.updateBook(entity.copy(coverPath = coverPath))
+        Log.d(TAG, "已更新书籍封面: bookId=$bookId, coverPath=$coverPath")
     }
 
     // ==================== Entity ↔ Domain 映射 ====================
