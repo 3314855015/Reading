@@ -1,5 +1,6 @@
 package com.reading.my.ui.screens
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -53,6 +54,8 @@ import com.reading.my.ui.screens.bookshelf.BookDetailScreen
 import com.reading.my.domain.model.Chapter
 import com.reading.my.ui.screens.reader.ReaderScreen
 import com.reading.my.ui.screens.profile.ProfileScreen
+import com.reading.my.ui.screens.profile.ProfileActivityScreen
+import com.reading.my.ui.screens.profile.EditProfileScreen
 
 /**
  * 主界面 - 底部导航容器
@@ -81,13 +84,23 @@ fun MainScreen(
     var selectedBookId by remember { mutableStateOf<Long?>(null) }
     // 阅读器导航状态：(章节列表, 当前章节索引)
     var readerState by remember { mutableStateOf<Pair<List<Chapter>, Int>?>(null) }
+    // 个人页导航状态
+    var showProfileActivity by remember { mutableStateOf(false) }
+    var showEditProfile by remember { mutableStateOf(false) }
+
+    // 系统返回键拦截：按页面栈优先级依次消费，最底层才退出 APP
+    // 优先级：资料编辑 > 个人动态 > 阅读器 > 书籍详情 > 主 Tab（放行给系统）
+    BackHandler(enabled = showEditProfile) { showEditProfile = false }
+    BackHandler(enabled = showProfileActivity) { showProfileActivity = false }
+//    BackHandler(enabled = readerState != null) { readerState = null }
+    BackHandler(enabled = selectedBookId != null) { selectedBookId = null }
 
     Scaffold(
         modifier = Modifier.fillMaxSize(),
         containerColor = BackgroundGray,
         // 仅在非详情页时显示底部导航栏
         bottomBar = {
-            if (selectedBookId == null) {
+            if (selectedBookId == null && readerState == null && !showProfileActivity && !showEditProfile) {
                 BottomNavigationBar(
                     items = items,
                     selectedRoute = selectedRoute,
@@ -101,7 +114,7 @@ fun MainScreen(
     ) { innerPadding ->
         // 详情页和阅读器全屏覆盖，不应用 Scaffold 的 padding
         // 普通 Tab 页应用 top（状态栏）+ bottom（导航栏）padding
-        val isFullScreen = selectedBookId != null || readerState != null
+        val isFullScreen = selectedBookId != null || readerState != null || showProfileActivity || showEditProfile
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -115,7 +128,7 @@ fun MainScreen(
                 )
         ) {
             AnimatedContent(
-                targetState = readerState to (selectedBookId to selectedRoute),
+                targetState = readerState to (selectedBookId to (showProfileActivity to (showEditProfile to selectedRoute))),
                 transitionSpec = {
                     // 进入详情页/阅读器：从右侧滑入 + 淡入
                     // 返回：向左滑出 + 淡出
@@ -132,10 +145,22 @@ fun MainScreen(
                     }
                 },
                 label = "pageTransition"
-            ) { (readerData, bookIdAndRoute) ->
-                val (bookId, route) = bookIdAndRoute
+            ) { (readerData, rest) ->
+                val (bookId, profileRest) = rest
+                val (showActivity, editRest) = profileRest
+                val (showEdit, route) = editRest
 
                 when {
+                    // 个人资料编辑页（最顶层）
+                    showEditProfile -> EditProfileScreen(
+                        onBack = { showEditProfile = false }
+                    )
+                    // 个人动态页
+                    showProfileActivity -> ProfileActivityScreen(
+                        isSelf = true,
+                        onBack = { showProfileActivity = false },
+                        onOpenEditProfile = { showEditProfile = true }
+                    )
                     // 阅读器（最顶层）
                     readerData != null -> {
                         val (chapters, currentIdx) = readerData
@@ -165,7 +190,9 @@ fun MainScreen(
                     )
                     route == Screen.Bookstore.route -> BookstoreTab()
                     route == Screen.Community.route -> CommunityTab()
-                    route == Screen.Profile.route -> ProfileScreen()
+                    route == Screen.Profile.route -> ProfileScreen(
+                        onNavigateToProfile = { showProfileActivity = true }
+                    )
                 }
             }
         }
