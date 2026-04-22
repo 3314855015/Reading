@@ -18,3 +18,9 @@ data class UserInfo(
     @SerialName("createdAt")
     val createdAt: String? = null
 )
+
+@Serializable
+data class UpdateUsernameRequest(val username: String)
+
+@Serializable
+data class UpdateAvatarRequest(val avatar: String)

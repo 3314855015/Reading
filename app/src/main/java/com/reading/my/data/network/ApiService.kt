@@ -53,4 +53,18 @@ interface ApiService {
      */
     @GET(ApiConstants.USER_ME)
     suspend fun getUserInfo(): ApiResponse<UserInfo>
+
+    /**
+     * 更新昵称
+     * PUT /api/v1/users/me/username
+     */
+    @PUT("api/v1/users/me/username")
+    suspend fun updateUsername(@Body request: UpdateUsernameRequest): ApiResponse<UserInfo>
+
+    /**
+     * 更新头像
+     * PUT /api/v1/users/me/avatar
+     */
+    @PUT("api/v1/users/me/avatar")
+    suspend fun updateAvatar(@Body request: UpdateAvatarRequest): ApiResponse<UserInfo>
 }
