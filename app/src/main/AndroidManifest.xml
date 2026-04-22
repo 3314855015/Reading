@@ -7,6 +7,8 @@
     <!-- 文件读取权限（SAF选择器为主，权限为辅助） -->
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.READ_MEDIA_DOCUMENTS" />
+    <!-- 相册权限（Android 13+ 细分权限） -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
 
     <application
         android:name=".ReadingApplication"
