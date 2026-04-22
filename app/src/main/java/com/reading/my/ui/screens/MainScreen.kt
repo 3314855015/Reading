@@ -99,16 +99,20 @@ fun MainScreen(
             }
         }
     ) { innerPadding ->
-        // 内容区域：根据选中的路由显示对应页面
-        // 注意：BookstoreScreen 自行处理状态栏占位，故仅保留底部导航栏的 padding
+        // 详情页和阅读器全屏覆盖，不应用 Scaffold 的 padding
+        // 普通 Tab 页应用 top（状态栏）+ bottom（导航栏）padding
+        val isFullScreen = selectedBookId != null || readerState != null
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                 .padding(
-                     top = if (selectedRoute == Screen.Bookstore.route) 0.dp
-                     else innerPadding.calculateTopPadding(),
-                     bottom = innerPadding.calculateBottomPadding()
-                 )
+                .then(
+                    if (isFullScreen) Modifier  // 全屏页面自己处理 insets
+                    else Modifier.padding(
+                        top = if (selectedRoute == Screen.Bookstore.route) 0.dp
+                              else innerPadding.calculateTopPadding(),
+                        bottom = innerPadding.calculateBottomPadding()
+                    )
+                )
         ) {
             AnimatedContent(
                 targetState = readerState to (selectedBookId to selectedRoute),
