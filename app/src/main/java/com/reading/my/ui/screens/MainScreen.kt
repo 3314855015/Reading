@@ -52,6 +52,7 @@ import com.reading.my.ui.screens.bookshelf.BookshelfScreen
 import com.reading.my.ui.screens.bookshelf.BookDetailScreen
 import com.reading.my.domain.model.Chapter
 import com.reading.my.ui.screens.reader.ReaderScreen
+import com.reading.my.ui.screens.profile.ProfileScreen
 
 /**
  * 主界面 - 底部导航容器
@@ -160,7 +161,7 @@ fun MainScreen(
                     )
                     route == Screen.Bookstore.route -> BookstoreTab()
                     route == Screen.Community.route -> CommunityTab()
-                    route == Screen.Profile.route -> ProfileTab(userAvatarUrl = userAvatarUrl)
+                    route == Screen.Profile.route -> ProfileScreen()
                 }
             }
         }
@@ -267,52 +268,6 @@ private fun CommunityTab() {
         Text(text = "👥 同好圈子", fontSize = 22.sp, fontWeight = FontWeight.Bold, color = Color(0xFF333333))
         Spacer(modifier = Modifier.height(16.dp))
         PlaceholderContent("发现 · 加入圈子 · 分享作品")
-    }
-}
-
-// ==================== 我的页 ====================
-
-@Composable
-private fun ProfileTab(userAvatarUrl: String?) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(BackgroundGray),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Spacer(modifier = Modifier.height(48.dp))
-
-        // 头像区域
-        Box(
-            modifier = Modifier
-                .size(80.dp)
-                .clip(CircleShape)
-                .background(PrimaryOrange.copy(alpha = 0.1f)),
-            contentAlignment = Alignment.Center
-        ) {
-            if (!userAvatarUrl.isNullOrBlank()) {
-                Text(text = "👤", fontSize = 36.sp)
-            } else {
-                Text(text = "?", fontSize = 36.sp, fontWeight = FontWeight.Bold, color = PrimaryOrange)
-            }
-        }
-
-        Spacer(modifier = Modifier.height(12.dp))
-
-        Text(
-            text = "阅读者",
-            fontSize = 18.sp,
-            fontWeight = FontWeight.Medium,
-            color = Color(0xFF333333)
-        )
-
-        Spacer(modifier = Modifier.height(4.dp))
-
-        Text(text = "user@example.com", fontSize = 13.sp, color = Color(0xFF999999))
-
-        Spacer(modifier = Modifier.height(32.dp))
-
-        PlaceholderContent("个人信息 · 主题切换 · 阅读历史")
     }
 }
 
