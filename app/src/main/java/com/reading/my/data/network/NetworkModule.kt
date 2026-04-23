@@ -11,6 +11,7 @@ import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import retrofit2.converter.kotlinx.serialization.asConverterFactory
 import okhttp3.MediaType.Companion.toMediaType
+import javax.inject.Provider
 import javax.inject.Singleton
 
 /**
@@ -50,8 +51,11 @@ object NetworkModule {
 
     @Provides
     @Singleton
-    fun provideAuthInterceptor(sessionManager: UserSessionManager): AuthInterceptor {
-        return AuthInterceptor(sessionManager)
+    fun provideAuthInterceptor(
+        sessionManager: UserSessionManager,
+        apiServiceProvider: Provider<ApiService>
+    ): AuthInterceptor {
+        return AuthInterceptor(sessionManager, apiServiceProvider)
     }
 
     @Provides

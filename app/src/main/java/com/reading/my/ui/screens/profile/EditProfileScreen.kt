@@ -10,10 +10,10 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -26,14 +26,20 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import coil.compose.AsyncImage
+import com.reading.my.ui.imagecrop.AvatarCropScreen
 import com.reading.my.ui.theme.*
 
 /**
  * 个人资料编辑页
  *
  * 布局：标题栏（< 个人资料  保存）+ 修改区域列表
- * 当前实现：头像选择（相册）+ 昵称编辑
+ * 当前实现：头像选择（相册 → 裁剪页）+ 昵称编辑
  * 留白项：等级、个人简介、账号绑定、修改密码
+ *
+ * 头像流程：
+ *   点击"个人头像" → 申请权限 → 系统相册 → 选中图片 → AvatarCropScreen（裁剪）
+ *   → 确认后存 Base64 → 点击"保存" → 上传到服务器
  */
 @Composable
 fun EditProfileScreen(
@@ -56,25 +62,23 @@ fun EditProfileScreen(
         if (granted) imagePickerLauncher.launch("image/*")
     }
 
-    if (showUsernameEditor) {
-        UsernameEditorSheet(
-            current = uiState.username,
-            isLoading = uiState.isLoading,
-            error = uiState.usernameError,
-            onConfirm = { newName ->
-                viewModel.updateUsername(newName) { showUsernameEditor = false }
-            },
-            onDismiss = { showUsernameEditor = false }
+    // ── 头像裁剪页（全屏覆盖）───
+    if (uiState.showAvatarCrop && uiState.pendingAvatarUri != null) {
+        AvatarCropScreen(
+            imageUri = uiState.pendingAvatarUri!!,
+            onConfirm = { base64 -> viewModel.onAvatarCropped(base64) },
+            onDismiss = { viewModel.dismissAvatarCrop() }
         )
         return
     }
 
+    // ── 主页面 ──────────────────────────────
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(BackgroundGray)
     ) {
-        // ── 标题栏 ──────────────────────────────────────────────
+        // ── 标题栏 ──────────────────────────
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -107,7 +111,7 @@ fun EditProfileScreen(
 
         Spacer(modifier = Modifier.height(12.dp))
 
-        // ── 修改区域 ────────────────────────────────────────────
+        // ── 修改区域 ────────────────────────
         Card(
             modifier = Modifier
                 .fillMaxWidth()
@@ -117,7 +121,7 @@ fun EditProfileScreen(
             elevation = CardDefaults.cardElevation(0.dp)
         ) {
             Column {
-                // 头像行
+                // 头像行（带预览图 + 跳转裁剪）
                 ProfileRow(
                     label = "个人头像",
                     onClick = {
@@ -128,20 +132,35 @@ fun EditProfileScreen(
                         permissionLauncher.launch(permission)
                     }
                 ) {
-                    // TODO: [头像] 后续替换为 Coil AsyncImage 显示选中的图片
-                    Box(
-                        modifier = Modifier
-                            .size(40.dp)
-                            .clip(CircleShape)
-                            .background(PrimaryOrange.copy(alpha = 0.12f)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = uiState.username.firstOrNull()?.uppercase() ?: "?",
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = PrimaryOrange
+                    // 头像预览：优先显示裁剪后的待保存图 > 已保存的头像 URL > 首字母占位
+                    val previewUri = uiState.pendingAvatarBase64?.let { "data:image/jpeg;base64,$it" }
+                    val displayUrl = previewUri ?: uiState.avatarUrl
+
+                    if (!displayUrl.isNullOrBlank()) {
+                        AsyncImage(
+                            model = displayUrl,
+                            contentDescription = "头像预览",
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(CircleShape)
+                                .background(PrimaryOrange.copy(alpha = 0.08f)),
+                            contentScale = androidx.compose.ui.layout.ContentScale.Crop
                         )
+                    } else {
+                        Box(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(CircleShape)
+                                .background(PrimaryOrange.copy(alpha = 0.12f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = uiState.username.firstOrNull()?.uppercase() ?: "?",
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = PrimaryOrange
+                            )
+                        }
                     }
                 }
 
@@ -213,7 +232,24 @@ fun EditProfileScreen(
             )
         }
     }
+
+    // ── 昵称编辑弹窗 ──────────────────────
+    if (showUsernameEditor) {
+        UsernameEditorSheet(
+            current = uiState.username,
+            isLoading = uiState.isLoading,
+            error = uiState.usernameError,
+            onConfirm = { newName ->
+                viewModel.updateUsername(newName) { showUsernameEditor = false }
+            },
+            onDismiss = { showUsernameEditor = false }
+        )
+    }
 }
+
+// ══════════════════════════════════════════════════════════════
+// 通用行组件（复用）
+// ══════════════════════════════════════════════════════════════
 
 @Composable
 private fun ProfileRow(
@@ -242,7 +278,6 @@ private fun ProfileRow(
 
 @Composable
 private fun ProfileRowPlaceholder(label: String, value: String) {
-    // TODO: [个人资料] 等级/简介/账号绑定/修改密码 后续迭代实现
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -321,7 +356,7 @@ private fun UsernameEditorSheet(
 
         HorizontalDivider(color = DividerColor, thickness = 0.5.dp)
 
-        // 输入区域（参考截图：大字体输入框 + 提示文字）
+        // 输入区域
         Box(modifier = Modifier.fillMaxWidth()) {
             BasicTextField(
                 value = input,
