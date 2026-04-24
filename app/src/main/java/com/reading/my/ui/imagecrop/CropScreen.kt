@@ -1,6 +1,7 @@
 package com.reading.my.ui.imagecrop
 
 import android.content.Context
+import android.util.Log
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
@@ -155,6 +156,8 @@ fun CropScreen(
                 .pointerInput(Unit) {
                     // 仅保留单指拖动，已移除双指缩放
                     detectDragGestures { _, dragAmount ->
+                        Log.d("CropScreen", "dragAmount=$dragAmount  " +
+                                "scale=${cropState.scale}  baseFit=${cropState.baseFitSize.width.toInt()}x${cropState.baseFitSize.height.toInt()}")
                         cropState.onPan(pan = dragAmount)
                     }
                 },
@@ -169,8 +172,8 @@ fun CropScreen(
                     .graphicsLayer {
                         scaleX = cropState.scale
                         scaleY = cropState.scale
-                        translationX = cropState.offset.x
-                        translationY = cropState.offset.y
+                        translationX = cropState.offset.value.x
+                        translationY = cropState.offset.value.y
                     }
             )
 
@@ -237,8 +240,8 @@ suspend fun cropAndConvertToBase64(
         val scaledSize = cropState.getScaledImageSize()
 
         // ── 3. 图片在容器中的左上角坐标（含 offset 平移）──
-        val imgLeft = containerCenterX - scaledSize.width / 2f + cropState.offset.x
-        val imgTop  = containerCenterY - scaledSize.height / 2f + cropState.offset.y
+        val imgLeft = containerCenterX - scaledSize.width / 2f + cropState.offset.value.x
+        val imgTop  = containerCenterY - scaledSize.height / 2f + cropState.offset.value.y
 
         // ── 4. 裁剪框在容器中的矩形 ──
         val cropRect = cropState.getCropRect()

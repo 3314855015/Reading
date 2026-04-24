@@ -1,6 +1,9 @@
 package com.reading.my.ui.imagecrop
 
+import android.util.Log
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.Stable
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.geometry.Rect
@@ -49,9 +52,8 @@ class CropState(
     var scale: Float = 1f
         private set
 
-    /** 平移偏移量（单位：容器像素） */
-    var offset: Offset = Offset.Zero
-        internal set
+    /** 平移偏移量（单位：容器像素，Compose 可观察） */
+    val offset: MutableState<Offset> = mutableStateOf(Offset.Zero)
 
     private var containerSize: Size = Size.Zero
 
@@ -97,7 +99,15 @@ class CropState(
         scale = maxOf(scaleX, scaleY, 1f)
 
         // 重置偏移到中心
-        offset = Offset.Zero
+        offset.value = Offset.Zero
+
+        val cropW2 = size.width * 0.7f
+        val cropH2 = cropW2 * (config.aspectRatioH / config.aspectRatioW)
+        Log.d("CropState", "=== INIT === container=${size.width.toInt()}x${size.height.toInt()} " +
+                "original=${imageSize.width.toInt()}x${imageSize.height.toInt()} " +
+                "baseFit=${baseFitSize.width.toInt()}x${baseFitSize.height.toInt()} " +
+                "scale=$scale " +
+                "cropRect=${cropW2.toInt()}x${cropH2.toInt()}")
     }
 
     /**
@@ -106,9 +116,11 @@ class CropState(
      * @return 夹紧后的最终 offset
      */
     fun onPan(pan: Offset): Offset {
-        offset += pan
+        offset.value += pan
+        Log.d("CropState", "onPan: pan=$pan → rawOffset=${offset.value}")
         clampOffset()
-        return offset
+        Log.d("CropState", "onPan: clamped=${offset.value}  (delta=${offset.value - (pan + (offset.value - pan))})")
+        return offset.value
     }
 
     /**
@@ -132,6 +144,9 @@ class CropState(
         val cropRect = getCropRect()
         val currentSize = getScaledImageSize()
 
+        Log.d("CropState", "clamp: scaledSize=${currentSize.width.toInt()}x${currentSize.height.toInt()} " +
+                "cropRect=${cropRect.width.toInt()}x${cropRect.height.toInt()}")
+
         val containerCenterX = containerSize.width / 2f
         val containerCenterY = containerSize.height / 2f
         val imgHalfW = currentSize.width / 2f
@@ -140,7 +155,9 @@ class CropState(
         val clampedX = if (currentSize.width >= cropRect.width) {
             val minOffsetX = cropRect.right - containerCenterX - imgHalfW
             val maxOffsetX = cropRect.left - containerCenterX + imgHalfW
-            offset.x.coerceIn(minOffsetX, maxOffsetX)
+            val result = offset.value.x.coerceIn(minOffsetX, maxOffsetX)
+            Log.d("CropState", "  X: range[$minOffsetX ~ $maxOffsetX] raw=${offset.value.x} → $result")
+            result
         } else {
             // 图片宽度小于裁剪框（正常不应发生），锁定居中
             0f
@@ -149,13 +166,15 @@ class CropState(
         val clampedY = if (currentSize.height >= cropRect.height) {
             val minOffsetY = cropRect.bottom - containerCenterY - imgHalfH
             val maxOffsetY = cropRect.top - containerCenterY + imgHalfH
-            offset.y.coerceIn(minOffsetY, maxOffsetY)
+            val result = offset.value.y.coerceIn(minOffsetY, maxOffsetY)
+            Log.d("CropState", "  Y: range[$minOffsetY ~ $maxOffsetY] raw=${offset.value.y} → $result")
+            result
         } else {
             // 图片高度小于裁剪框（正常不应发生），锁定居中
             0f
         }
 
-        offset = Offset(clampedX, clampedY)
+        offset.value = Offset(clampedX, clampedY)
     }
 
     /**
