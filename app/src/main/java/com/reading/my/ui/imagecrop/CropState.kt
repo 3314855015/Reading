@@ -10,14 +10,11 @@ import androidx.compose.ui.geometry.Rect
  *
  * @param aspectRatioW 宽比例（如 1:1 → w=1, 3:4 → w=3）
  * @param aspectRatioH 高比例（如 1:1 → h=1, 3:4 → h=4）
- * @param minScale 最小缩放倍数（图片至少放大到填满裁剪框）
  */
 @Stable
 data class CropConfig(
     val aspectRatioW: Float = 1f,
     val aspectRatioH: Float = 1f,
-    val minScale: Float = 1f,
-    val maxScale: Float = 5f,
 ) {
     /** 比例值，如 1:1 → 1.0, 3:4 → 0.75 */
     val aspectRatio: Float get() = aspectRatioW / aspectRatioH
@@ -34,60 +31,79 @@ data class CropConfig(
 /**
  * 裁剪交互状态（可变）
  *
- * 管理图片的缩放、平移，并提供边界限制：
- * - 图片不能缩小到裁剪框之外（保证裁剪区域始终有内容）
- * - 图片移动范围限制在裁剪框内（不能拖出空白）
+ * 管理图片的平移，并提供边界限制：
+ * - 图片在初始化时自动缩放到恰好填满裁剪框（不可再缩放）
+ * - 图片移动范围限制保证裁剪区域内始终有内容，不能露出空白
+ *
+ * 尺寸模型：
+ *   baseFitSize  = 图片用 ContentScale.Fit 填入容器时的显示尺寸
+ *   scaledSize   = baseFitSize * scale（当前实际渲染大小，scale 固定）
  */
 @Stable
 class CropState(
     private val config: CropConfig
 ) {
+    /**
+     * 固定缩放系数：初始化时计算一次，保证图片恰好覆盖裁剪框，之后不再改变。
+     */
     var scale: Float = 1f
-        internal set
+        private set
 
+    /** 平移偏移量（单位：容器像素） */
     var offset: Offset = Offset.Zero
         internal set
 
-    /** 当前画布尺寸（由外部传入，用于计算裁剪框位置） */
     private var containerSize: Size = Size.Zero
 
     /**
-     * 初始化 / 更新容器尺寸时调用。
-     * 自动计算让图片填满裁剪框所需的初始 scale 和居中 offset。
+     * 图片原始像素尺寸（供保存时计算裁剪区域使用）
+     */
+    var imageOriginalSize: Size = Size.Zero
+        private set
+
+    /**
+     * 图片在容器中以 ContentScale.Fit 显示的基础尺寸（scale=1.0 时的大小）。
+     * 这是 AsyncImage 实际绘制到屏幕上的初始大小（供保存时计算裁剪区域使用）。
+     */
+    var baseFitSize: Size = Size.Zero
+        private set
+
+    /**
+     * 初始化 / 更新容器和图片尺寸。
+     * 计算 ContentScale.Fit 下图片的初始显示尺寸，
+     * 再计算让图片覆盖裁剪框所需的最小缩放比（固定 scale）。
      */
     fun initContainer(size: Size, imageSize: Size) {
         containerSize = size
+        imageOriginalSize = imageSize
 
-        // 计算裁剪框尺寸（占容器的 70% 宽度）
+        // ── 1. 计算 ContentScale.Fit 的基础显示尺寸 ──
+        // Fit = 等比缩放图片使其完整放入容器，可能有留白
+        val containerRatio = size.width / size.height
+        val imageRatio = imageSize.width / imageSize.height
+        baseFitSize = if (imageRatio > containerRatio) {
+            // 图片更宽 → 以容器宽度为准
+            Size(size.width, size.width / imageRatio)
+        } else {
+            // 图片更高 → 以容器高度为准
+            Size(size.height * imageRatio, size.height)
+        }
+
+        // ── 2. 计算固定 scale（让图片覆盖裁剪框的短边）──
         val cropW = size.width * 0.7f
         val cropH = cropW * (config.aspectRatioH / config.aspectRatioW)
+        val scaleX = cropW / baseFitSize.width
+        val scaleY = cropH / baseFitSize.height
+        scale = maxOf(scaleX, scaleY, 1f)
 
-        // 计算图片初始 scale：让图片短边刚好覆盖裁剪框对应边
-        val scaleX = cropW / imageSize.width
-        val scaleY = cropH / imageSize.height
-        scale = maxOf(scaleX, scaleY, config.minScale)
-
-        // 居中
+        // 重置偏移到中心
         offset = Offset.Zero
     }
 
     /**
-     * 处理双指缩放手势
-     * @return 实际生效的 scale（被 clamp 后的值）
-     */
-    fun onZoom(zoomFactor: Float): Float {
-        val newScale = (scale * zoomFactor).coerceIn(config.minScale, config.maxScale)
-        scale = newScale
-
-        // 缩放后重新限制位移，防止图片被拖出裁剪框
-        clampOffset()
-
-        return newScale
-    }
-
-    /**
-     * 处理单指平移手势
-     * @return 实际生效的 offset（被 clamp 后的值）
+     * 处理单指拖动平移。
+     * @param pan 本次手势增量（容器像素）
+     * @return 夹紧后的最终 offset
      */
     fun onPan(pan: Offset): Offset {
         offset += pan
@@ -96,72 +112,54 @@ class CropState(
     }
 
     /**
-     * 核心方法：将 offset 限制在合法范围内
+     * 将 offset 限制在合法范围内，保证图片始终覆盖裁剪框，不露出空白。
      *
-     * 合法范围 = 图片经过缩放后的边缘不能进入裁剪框内部
-     * 即：图片必须完全覆盖裁剪框区域（允许超出）
+     * 推导（以 X 轴为例）：
+     *   图片左边 = containerCenterX - imgHalfW + offset.x
+     *   图片右边 = containerCenterX + imgHalfW + offset.x
+     *
+     *   要求图片左边 ≤ 裁剪框左边：
+     *     offset.x ≤ cropRect.left - containerCenterX + imgHalfW   → maxOffsetX
+     *
+     *   要求图片右边 ≥ 裁剪框右边：
+     *     offset.x ≥ cropRect.right - containerCenterX - imgHalfW  → minOffsetX
+     *
+     * 边界是固定的几何量，不随 offset 当前值变化。
      */
     fun clampOffset() {
-        if (containerSize == Size.Zero) return
+        if (containerSize == Size.Zero || baseFitSize == Size.Zero) return
 
         val cropRect = getCropRect()
-        val scaledImageSize = getScaledImageSize()
-
-        // 图片在容器中的实际可见范围
-        // 图片中心 = 容器中心 + offset
-        // 图片左边缘 = centerX - scaledWidth/2 + offsetX
-        // 图片右边缘 = centerX + scaledWidth/2 + offsetX
-        // （上下同理）
-
-        val imgHalfW = scaledImageSize.width / 2f
-        val imgHalfH = scaledImageSize.height / 2f
-
-        // 允许的最大偏移量：图片边缘刚好贴到裁剪框对边
-        // 左方向最大偏移 = 图片右边缘 - 裁剪框右边缘
-        // 但更直观的方式是：
-        //   offset.x 的范围使得图片左边缘 ≤ 裁剪框左边缘 且 图片右边缘 ≥ 裁剪框右边缘
+        val currentSize = getScaledImageSize()
 
         val containerCenterX = containerSize.width / 2f
         val containerCenterY = containerSize.height / 2f
+        val imgHalfW = currentSize.width / 2f
+        val imgHalfH = currentSize.height / 2f
 
-        // 图片四边位置（相对于容器左上角）
-        val imgLeft = containerCenterX - imgHalfW + offset.x
-        val imgRight = containerCenterX + imgHalfW + offset.x
-        val imgTop = containerCenterY - imgHalfH + offset.y
-        val imgBottom = containerCenterY + imgHalfH + offset.y
-
-        // 限制：图片不能露出裁剪框内的空白
-        // 即：imgLeft ≤ cropLeft, imgRight ≥ cropRight（水平方向）
-        //     imgTop ≤ cropTop,   imgBottom ≥ cropBottom（垂直方向）
-
-        var clampedX = offset.x
-        var clampedY = offset.y
-
-        if (scaledImageSize.width >= cropRect.width) {
-            // 图片宽度足够覆盖裁剪框 → 限制左右不越界
-            // 左边界：图片左边不能超过裁剪框左边
-            val maxLeftShift = cropRect.left - imgLeft
-            // 右边界：图片右边不能超过裁剪框右边
-            val maxRightShift = cropRect.right - imgRight
-            clampedX = offset.x.coerceIn(maxRightShift, maxLeftShift)
+        val clampedX = if (currentSize.width >= cropRect.width) {
+            val minOffsetX = cropRect.right - containerCenterX - imgHalfW
+            val maxOffsetX = cropRect.left - containerCenterX + imgHalfW
+            offset.x.coerceIn(minOffsetX, maxOffsetX)
         } else {
-            // 图片宽度不足 → 强制居中（不应该发生，因为 minScale 保证覆盖）
-            clampedX = 0f
+            // 图片宽度小于裁剪框（正常不应发生），锁定居中
+            0f
         }
 
-        if (scaledImageSize.height >= cropRect.height) {
-            val maxTopShift = cropRect.top - imgTop
-            val maxBottomShift = cropRect.bottom - imgBottom
-            clampedY = offset.y.coerceIn(maxBottomShift, maxTopShift)
+        val clampedY = if (currentSize.height >= cropRect.height) {
+            val minOffsetY = cropRect.bottom - containerCenterY - imgHalfH
+            val maxOffsetY = cropRect.top - containerCenterY + imgHalfH
+            offset.y.coerceIn(minOffsetY, maxOffsetY)
         } else {
-            clampedY = 0f
+            // 图片高度小于裁剪框（正常不应发生），锁定居中
+            0f
         }
 
         offset = Offset(clampedX, clampedY)
     }
 
     /**
-     * 获取裁剪框在容器坐标系中的矩形
+     * 获取裁剪框在容器坐标系中的矩形（宽度 = 容器宽度的 70%，高度按比例）
      */
     fun getCropRect(): Rect {
         if (containerSize == Size.Zero) return Rect.Zero
@@ -175,12 +173,10 @@ class CropState(
     }
 
     /**
-     * 获取缩放后图片的实际显示尺寸
+     * 获取当前 scale 下图片的实际显示尺寸（baseFitSize × scale）
      */
-    fun getScaledImageSize(): Size {
-        // 注意：这里假设原始图片是 fit 到容器的
-        // 实际尺寸需要在知道原始图片尺寸后才能准确计算
-        // 此处返回基于容器和 scale 的近似值
-        return Size(containerSize.width * scale, containerSize.height * scale)
-    }
+    fun getScaledImageSize(): Size = Size(
+        baseFitSize.width * scale,
+        baseFitSize.height * scale
+    )
 }

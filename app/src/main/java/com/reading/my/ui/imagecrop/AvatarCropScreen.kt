@@ -17,14 +17,14 @@ fun AvatarCropScreen(
     onDismiss: () -> Unit
 ) {
     CropScreen(
-        imageUri = imageUri,
-        config = CropConfig.AvatarSquare,
-        title = "裁剪头像",
+        imageUri    = imageUri,
+        config      = CropConfig.AvatarSquare,
+        title       = "裁剪头像",
         confirmText = "使用",
-        hintText = "双指缩放 · 单指移动 · 拖动调整头像位置",
-        isCircle = true,
+        hintText    = "拖动调整头像位置",
+        isCircle    = true,
         maxDimension = 512,
-        onConfirm = onConfirm,
-        onDismiss = onDismiss
+        onConfirm   = onConfirm,
+        onDismiss   = onDismiss
     )
 }

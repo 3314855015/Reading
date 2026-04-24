@@ -1,8 +1,6 @@
 package com.reading.my.ui.imagecrop
 
 import androidx.compose.runtime.Composable
-import com.reading.my.ui.imagecrop.CropConfig
-import com.reading.my.ui.imagecrop.CropScreen
 
 /**
  * 封面裁剪页（薄包装层）
@@ -19,14 +17,14 @@ fun CoverCropScreen(
     onDismiss: () -> Unit
 ) {
     CropScreen(
-        imageUri = imageUri,
-        config = CropConfig.CoverPortrait,
-        title = "选择封面",
-        confirmText = "使用此封面",
-        hintText = "双指缩放 · 单指移动",
-        isCircle = false,
+        imageUri     = imageUri,
+        config       = CropConfig.CoverPortrait,
+        title        = "选择封面",
+        confirmText  = "使用此封面",
+        hintText     = "拖动调整封面位置",
+        isCircle     = false,
         maxDimension = 800,
-        onConfirm = onConfirm,
-        onDismiss = onDismiss
+        onConfirm    = onConfirm,
+        onDismiss    = onDismiss
     )
 }

@@ -19,8 +19,8 @@ import com.reading.my.ui.theme.PrimaryOrange
  * 2. 绘制白色边线（矩形）或圆形边线（头像）
  * 3. 绘制四角/四方向橙色标记
  *
- * @param config 裁剪配置（决定裁剪框比例，如 1:1 或 3:4）
- * @param isCircle 是否圆形裁剪框（true=圆形头像, false=矩形封面）
+ * @param config      裁剪配置（决定裁剪框比例，如 1:1 或 3:4）
+ * @param isCircle    是否圆形裁剪框（true=圆形头像, false=矩形封面）
  * @param cornerColor 标记颜色（默认 PrimaryOrange）
  */
 @Composable
@@ -37,63 +37,68 @@ fun CropOverlay(
         // ── 计算裁剪框 ──
         val cropW = containerW * 0.7f
         val cropH = cropW * (config.aspectRatioH / config.aspectRatioW)
-        val left = (containerW - cropW) / 2f
-        val top = (containerH - cropH) / 2f
-        val right = left + cropW
-        val bottom = top + cropH
+        val left   = (containerW - cropW) / 2f
+        val top    = (containerH - cropH) / 2f
+        val right  = left + cropW
+        val bottom = top  + cropH
 
-        // ── 1. 四条半透明遮罩带（挖空中间裁剪区域）──
+        // ── 1. 四条半透明遮罩带（完整覆盖裁剪框之外的所有区域）──
         val maskColor = Color.Black.copy(alpha = 0.55f)
-        // 上方
+
+        // 上方：全宽，高度 = top
         drawRect(maskColor, topLeft = Offset(0f, 0f), size = Size(containerW, top))
-        // 下方
+        // 下方：全宽，从 bottom 到容器底部
         drawRect(maskColor, topLeft = Offset(0f, bottom), size = Size(containerW, containerH - bottom))
-        // 左侧
-        drawRect(maskColor, topLeft = Offset(left, 0f), size = Size(left, cropH))
-        // 右侧
-        drawRect(maskColor, topLeft = Offset(right, 0f), size = Size(containerW - right, cropH))
+        // 左侧：从 (0, top) 开始，宽 = left，高 = cropH
+        drawRect(maskColor, topLeft = Offset(0f, top), size = Size(left, cropH))
+        // 右侧：从 (right, top) 开始，宽 = containerW-right，高 = cropH
+        drawRect(maskColor, topLeft = Offset(right, top), size = Size(containerW - right, cropH))
 
         // ── 2. 裁剪框边线 ──
         if (isCircle) {
-            val cx = left + cropW / 2f
-            val cy = top + cropH / 2f
+            val cx     = left + cropW / 2f
+            val cy     = top  + cropH / 2f
             val radius = minOf(cropW, cropH) / 2f
             drawCircle(
-                color = Color.White,
+                color  = Color.White,
                 radius = radius,
                 center = Offset(cx, cy),
-                style = Stroke(width = 2.dp.toPx())
+                style  = Stroke(width = 2.dp.toPx())
             )
         } else {
             drawRect(
-                color = Color.White,
+                color   = Color.White,
                 topLeft = Offset(left, top),
-                size = Size(cropW, cropH),
-                style = Stroke(width = 2.dp.toPx())
+                size    = Size(cropW, cropH),
+                style   = Stroke(width = 2.dp.toPx())
             )
         }
 
         // ── 3. 四角/方向标记 ──
-        val cornerLen = 20.dp.toPx()
+        val cornerLen         = 20.dp.toPx()
         val cornerStrokeWidth = 3.dp.toPx()
 
         if (isCircle) {
-            // 圆形：四个方向的短线标记
-            val centerX = left + cropW / 2f
-            val centerY = top + cropH / 2f
-            val r = minOf(cropW, cropH) / 2f
-            drawLine(cornerColor, Offset(centerX, centerY - r), Offset(centerX, centerY - r + cornerLen), strokeWidth = cornerStrokeWidth)
-            drawLine(cornerColor, Offset(centerX, centerY + r), Offset(centerX, centerY + r - cornerLen), strokeWidth = cornerStrokeWidth)
-            drawLine(cornerColor, Offset(centerX - r, centerY), Offset(centerX - r + cornerLen, centerY), strokeWidth = cornerStrokeWidth)
-            drawLine(cornerColor, Offset(centerX + r, centerY), Offset(centerX + r - cornerLen, centerY), strokeWidth = cornerStrokeWidth)
+            // 圆形：四个方向的短线标记（上/下/左/右）
+            val cx = left + cropW / 2f
+            val cy = top  + cropH / 2f
+            val r  = minOf(cropW, cropH) / 2f
+            drawLine(cornerColor, Offset(cx, cy - r), Offset(cx, cy - r + cornerLen), strokeWidth = cornerStrokeWidth)
+            drawLine(cornerColor, Offset(cx, cy + r), Offset(cx, cy + r - cornerLen), strokeWidth = cornerStrokeWidth)
+            drawLine(cornerColor, Offset(cx - r, cy), Offset(cx - r + cornerLen, cy), strokeWidth = cornerStrokeWidth)
+            drawLine(cornerColor, Offset(cx + r, cy), Offset(cx + r - cornerLen, cy), strokeWidth = cornerStrokeWidth)
         } else {
             // 矩形：四角 L 形标记
+            // 左上
             drawLine(cornerColor, Offset(left, top), Offset(left + cornerLen, top), strokeWidth = cornerStrokeWidth)
             drawLine(cornerColor, Offset(left, top), Offset(left, top + cornerLen), strokeWidth = cornerStrokeWidth)
+            // 右上
             drawLine(cornerColor, Offset(right, top), Offset(right - cornerLen, top), strokeWidth = cornerStrokeWidth)
             drawLine(cornerColor, Offset(right, top), Offset(right, top + cornerLen), strokeWidth = cornerStrokeWidth)
+            // 左下
             drawLine(cornerColor, Offset(left, bottom), Offset(left + cornerLen, bottom), strokeWidth = cornerStrokeWidth)
             drawLine(cornerColor, Offset(left, bottom), Offset(left, bottom - cornerLen), strokeWidth = cornerStrokeWidth)
+            // 右下
             drawLine(cornerColor, Offset(right, bottom), Offset(right - cornerLen, bottom), strokeWidth = cornerStrokeWidth)
             drawLine(cornerColor, Offset(right, bottom), Offset(right, bottom - cornerLen), strokeWidth = cornerStrokeWidth)
         }
