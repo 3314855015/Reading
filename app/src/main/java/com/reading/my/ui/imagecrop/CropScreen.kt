@@ -7,6 +7,7 @@ import android.graphics.BitmapFactory
 import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -15,6 +16,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
@@ -39,7 +41,7 @@ import java.io.InputStream
  *
  * 封装了所有裁剪页的公共逻辑：
  * - 图片尺寸异步加载 + 容器尺寸跟踪 + 自动初始化 CropState
- * - 单指拖动平移手势处理（带边界限制，已移除缩放）
+ * - 双指缩放 + 单指拖动平移手势处理（带边界限制）
  * - AsyncImage 渲染 + CropOverlay 遮罩层
  * - 保存时按裁剪框实际裁剪图片原始像素后输出 Base64
  * - 标准布局：标题栏(返回+标题+确认) + 预览区 + 提示文字
@@ -60,7 +62,7 @@ fun CropScreen(
     config: CropConfig,
     title: String = "裁剪图片",
     confirmText: String = "使用",
-    hintText: String = "单指移动调整位置",
+    hintText: String = "双指缩放 · 单指移动",
     isCircle: Boolean = false,
     maxDimension: Int = 512,
     onConfirm: (String) -> Unit,
@@ -154,11 +156,13 @@ fun CropScreen(
                 .onSizeChanged { containerSize = it }
                 .clipToBounds()
                 .pointerInput(Unit) {
-                    // 仅保留单指拖动，已移除双指缩放
-                    detectDragGestures { _, dragAmount ->
-                        Log.d("CropScreen", "dragAmount=$dragAmount  " +
-                                "scale=${cropState.scale}  baseFit=${cropState.baseFitSize.width.toInt()}x${cropState.baseFitSize.height.toInt()}")
-                        cropState.onPan(pan = dragAmount)
+                    detectTransformGestures { centroid, pan, zoom, _ ->
+                        if (zoom != 1f) {
+                            cropState.onZoom(zoom = zoom, centroid = centroid)
+                        }
+                        if (pan != Offset.Zero) {
+                            cropState.onPan(pan = pan)
+                        }
                     }
                 },
             contentAlignment = Alignment.Center
@@ -170,8 +174,8 @@ fun CropScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .graphicsLayer {
-                        scaleX = cropState.scale
-                        scaleY = cropState.scale
+                        scaleX = cropState.scale.value
+                        scaleY = cropState.scale.value
                         translationX = cropState.offset.value.x
                         translationY = cropState.offset.value.y
                     }

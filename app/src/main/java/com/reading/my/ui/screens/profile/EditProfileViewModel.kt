@@ -109,43 +109,46 @@ class EditProfileViewModel @Inject constructor(
     }
 
     /**
-     * 保存所有变更 — 将裁剪后的 Base64 图片上传到服务器
+     * 保存所有变更 — 乐观更新策略（先本地，后远程）
+     *
+     * 流程：
+     *   1. 立即保存到本地 SessionManager → UI 马上看到新头像
+     *   2. 异步推送到服务器
+     *   3. 成功：用服务器返回的规范 URL 替换本地的临时数据
+     *   4. 失败：保留本地数据（用户可正常使用），提示可稍后重试
      */
     fun saveAll(onSuccess: () -> Unit) {
-        // 检查是否有需要保存的头像数据
-        val pendingBase64 = _uiState.value.pendingAvatarBase64
+        val pendingBase64 = _uiState.value.pendingAvatarBase64 ?: run { onSuccess(); return }
+
+        val localTempUrl = "data:image/jpeg;base64,$pendingBase64"
 
         viewModelScope.launch {
-            if (pendingBase64 != null) {
-                // 有待上传的头像
-                _uiState.update { it.copy(isLoading = true) }
-                try {
-                    // 发送 Base64 图片数据给后端
-                    val resp = apiService.updateAvatar(UpdateAvatarRequest(pendingBase64))
-                    if (resp.isSuccess()) {
-                        // 后端返回的可能是图片 URL，更新本地存储
-                        val serverAvatarUrl = resp.data?.avatar ?: "data:image/jpeg;base64,$pendingBase64"
-                        sessionManager.updateAvatar(serverAvatarUrl)
-                        _uiState.update {
-                            it.copy(
-                                isLoading = false,
-                                avatarUrl = serverAvatarUrl,
-                                pendingAvatarUri = null,
-                                pendingAvatarBase64 = null,
-                                hasChanges = false,
-                                errorMessage = null
-                            )
-                        }
-                        onSuccess()
-                    } else {
-                        _uiState.update { it.copy(isLoading = false, errorMessage = resp.message) }
-                    }
-                } catch (e: Exception) {
-                    _uiState.update { it.copy(isLoading = false, errorMessage = "上传失败：${e.message}") }
+            // ── 第一步：立即保存本地（乐观更新）──
+            sessionManager.updateAvatar(localTempUrl)
+
+            _uiState.update {
+                it.copy(
+                    avatarUrl = localTempUrl,
+                    pendingAvatarUri = null,
+                    pendingAvatarBase64 = null,
+                    hasChanges = false,
+                    errorMessage = null
+                )
+            }
+            onSuccess()
+
+            // ── 第二步：异步推送到服务器（不阻塞 UI）──
+            try {
+                val resp = apiService.updateAvatar(UpdateAvatarRequest(pendingBase64))
+                if (resp.isSuccess()) {
+                    val serverUrl = resp.data?.avatar?.takeIf { it.isNotBlank() } ?: localTempUrl
+                    sessionManager.updateAvatar(serverUrl)
+                    _uiState.update { it.copy(avatarUrl = serverUrl) }
+                } else {
+                    _uiState.update { it.copy(errorMessage = "头像已保存到本地，同步到服务器失败：${resp.message}") }
                 }
-            } else {
-                // 无头像变更，直接成功
-                onSuccess()
+            } catch (e: Exception) {
+                _uiState.update { it.copy(errorMessage = "头像已保存到本地，网络异常：${e.message}") }
             }
         }
     }

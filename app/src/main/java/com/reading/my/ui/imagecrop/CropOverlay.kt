@@ -7,6 +7,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathFillType
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.unit.dp
 import com.reading.my.ui.theme.PrimaryOrange
@@ -15,13 +17,9 @@ import com.reading.my.ui.theme.PrimaryOrange
  * 裁剪框遮罩组件（纯 UI，无交互）
  *
  * 功能：
- * 1. 绘制四条半透明遮罩带（上/下/左/右），中间裁剪区留空
+ * 1. 绘制半透明遮罩，裁剪区域透明可见（矩形或圆形镂空）
  * 2. 绘制白色边线（矩形）或圆形边线（头像）
  * 3. 绘制四角/四方向橙色标记
- *
- * @param config      裁剪配置（决定裁剪框比例，如 1:1 或 3:4）
- * @param isCircle    是否圆形裁剪框（true=圆形头像, false=矩形封面）
- * @param cornerColor 标记颜色（默认 PrimaryOrange）
  */
 @Composable
 fun CropOverlay(
@@ -42,17 +40,32 @@ fun CropOverlay(
         val right  = left + cropW
         val bottom = top  + cropH
 
-        // ── 1. 四条半透明遮罩带（完整覆盖裁剪框之外的所有区域）──
+        // ── 1. 半透明遮罩带 ──
         val maskColor = Color.Black.copy(alpha = 0.55f)
 
-        // 上方：全宽，高度 = top
-        drawRect(maskColor, topLeft = Offset(0f, 0f), size = Size(containerW, top))
-        // 下方：全宽，从 bottom 到容器底部
-        drawRect(maskColor, topLeft = Offset(0f, bottom), size = Size(containerW, containerH - bottom))
-        // 左侧：从 (0, top) 开始，宽 = left，高 = cropH
-        drawRect(maskColor, topLeft = Offset(0f, top), size = Size(left, cropH))
-        // 右侧：从 (right, top) 开始，宽 = containerW-right，高 = cropH
-        drawRect(maskColor, topLeft = Offset(right, top), size = Size(containerW - right, cropH))
+        if (isCircle) {
+            // 圆形模式：全屏遮罩 + 圆形镂空
+            val cx     = left + cropW / 2f
+            val cy     = top  + cropH / 2f
+            val radius = minOf(cropW, cropH) / 2f
+
+            // 用 Path.combine 做差集运算：外矩形 - 内圆
+            val outerRect = androidx.compose.ui.geometry.Rect(0f, 0f, containerW, containerH)
+            val innerOval = androidx.compose.ui.geometry.Rect(cx - radius, cy - radius, cx + radius, cy + radius)
+            val maskPath = Path().apply {
+                addRect(outerRect)
+                addOval(innerOval)
+                fillType = PathFillType.EvenOdd  // 叠加区域自动镂空
+            }
+
+            drawPath(path = maskPath, color = maskColor)
+        } else {
+            // 矩形模式：四条遮罩带
+            drawRect(maskColor, topLeft = Offset(0f, 0f), size = Size(containerW, top))
+            drawRect(maskColor, topLeft = Offset(0f, bottom), size = Size(containerW, containerH - bottom))
+            drawRect(maskColor, topLeft = Offset(0f, top), size = Size(left, cropH))
+            drawRect(maskColor, topLeft = Offset(right, top), size = Size(containerW - right, cropH))
+        }
 
         // ── 2. 裁剪框边线 ──
         if (isCircle) {
@@ -89,16 +102,12 @@ fun CropOverlay(
             drawLine(cornerColor, Offset(cx + r, cy), Offset(cx + r - cornerLen, cy), strokeWidth = cornerStrokeWidth)
         } else {
             // 矩形：四角 L 形标记
-            // 左上
             drawLine(cornerColor, Offset(left, top), Offset(left + cornerLen, top), strokeWidth = cornerStrokeWidth)
             drawLine(cornerColor, Offset(left, top), Offset(left, top + cornerLen), strokeWidth = cornerStrokeWidth)
-            // 右上
             drawLine(cornerColor, Offset(right, top), Offset(right - cornerLen, top), strokeWidth = cornerStrokeWidth)
             drawLine(cornerColor, Offset(right, top), Offset(right, top + cornerLen), strokeWidth = cornerStrokeWidth)
-            // 左下
             drawLine(cornerColor, Offset(left, bottom), Offset(left + cornerLen, bottom), strokeWidth = cornerStrokeWidth)
             drawLine(cornerColor, Offset(left, bottom), Offset(left, bottom - cornerLen), strokeWidth = cornerStrokeWidth)
-            // 右下
             drawLine(cornerColor, Offset(right, bottom), Offset(right - cornerLen, bottom), strokeWidth = cornerStrokeWidth)
             drawLine(cornerColor, Offset(right, bottom), Offset(right, bottom - cornerLen), strokeWidth = cornerStrokeWidth)
         }

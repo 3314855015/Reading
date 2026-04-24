@@ -7,6 +7,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.geometry.Rect
+import kotlin.math.max
+import kotlin.math.min
 
 /**
  * 裁剪配置（不可变，由调用方定义）
@@ -34,23 +36,26 @@ data class CropConfig(
 /**
  * 裁剪交互状态（可变）
  *
- * 管理图片的平移，并提供边界限制：
- * - 图片在初始化时自动缩放到恰好填满裁剪框（不可再缩放）
- * - 图片移动范围限制保证裁剪区域内始终有内容，不能露出空白
+ * 管理图片的缩放和平移，并提供边界限制：
+ * - 图片在初始化时自动缩放到恰好填满裁剪框
+ * - 支持双指缩放 + 单指平移
+ * - 图片移动/缩放范围限制保证裁剪区域内始终有内容，不露出空白
  *
  * 尺寸模型：
- *   baseFitSize  = 图片用 ContentScale.Fit 填入容器时的显示尺寸
- *   scaledSize   = baseFitSize * scale（当前实际渲染大小，scale 固定）
+ *   baseFitSize  = 图片用 ContentScale.Fit 填入容器时的显示尺寸（scale=1.0）
+ *   scaledSize   = baseFitSize × scale（当前实际渲染大小）
  */
 @Stable
 class CropState(
     private val config: CropConfig
 ) {
-    /**
-     * 固定缩放系数：初始化时计算一次，保证图片恰好覆盖裁剪框，之后不再改变。
-     */
-    var scale: Float = 1f
-        private set
+    companion object {
+        const val MIN_SCALE = 0.5f
+        const val MAX_SCALE = 4f
+    }
+
+    /** 当前缩放系数（Compose 可观察） */
+    val scale: MutableState<Float> = mutableStateOf(1f)
 
     /** 平移偏移量（单位：容器像素，Compose 可观察） */
     val offset: MutableState<Offset> = mutableStateOf(Offset.Zero)
@@ -65,87 +70,84 @@ class CropState(
 
     /**
      * 图片在容器中以 ContentScale.Fit 显示的基础尺寸（scale=1.0 时的大小）。
-     * 这是 AsyncImage 实际绘制到屏幕上的初始大小（供保存时计算裁剪区域使用）。
+     * 这是 AsyncImage 实际绘制到屏幕上的初始大小。
      */
     var baseFitSize: Size = Size.Zero
         private set
 
+    /** 初始化时的最小 scale（恰好覆盖裁剪框），作为缩放下限 */
+    private var initialMinScale = 1f
+
     /**
      * 初始化 / 更新容器和图片尺寸。
-     * 计算 ContentScale.Fit 下图片的初始显示尺寸，
-     * 再计算让图片覆盖裁剪框所需的最小缩放比（固定 scale）。
      */
     fun initContainer(size: Size, imageSize: Size) {
         containerSize = size
         imageOriginalSize = imageSize
 
         // ── 1. 计算 ContentScale.Fit 的基础显示尺寸 ──
-        // Fit = 等比缩放图片使其完整放入容器，可能有留白
         val containerRatio = size.width / size.height
         val imageRatio = imageSize.width / imageSize.height
         baseFitSize = if (imageRatio > containerRatio) {
-            // 图片更宽 → 以容器宽度为准
             Size(size.width, size.width / imageRatio)
         } else {
-            // 图片更高 → 以容器高度为准
             Size(size.height * imageRatio, size.height)
         }
 
-        // ── 2. 计算固定 scale（让图片覆盖裁剪框的短边）──
+        // ── 2. 计算初始最小 scale（让图片覆盖裁剪框的短边）──
         val cropW = size.width * 0.7f
         val cropH = cropW * (config.aspectRatioH / config.aspectRatioW)
         val scaleX = cropW / baseFitSize.width
         val scaleY = cropH / baseFitSize.height
-        scale = maxOf(scaleX, scaleY, 1f)
+        initialMinScale = maxOf(maxOf(scaleX, scaleY), MIN_SCALE)
 
-        // 重置偏移到中心
+        // 重置状态
+        scale.value = initialMinScale
         offset.value = Offset.Zero
 
-        val cropW2 = size.width * 0.7f
-        val cropH2 = cropW2 * (config.aspectRatioH / config.aspectRatioW)
         Log.d("CropState", "=== INIT === container=${size.width.toInt()}x${size.height.toInt()} " +
                 "original=${imageSize.width.toInt()}x${imageSize.height.toInt()} " +
                 "baseFit=${baseFitSize.width.toInt()}x${baseFitSize.height.toInt()} " +
-                "scale=$scale " +
-                "cropRect=${cropW2.toInt()}x${cropH2.toInt()}")
+                "scale=${scale.value} minScale=$initialMinScale " +
+                "cropRect=${cropW.toInt()}x${cropH.toInt()}")
+    }
+
+    /**
+     * 处理双指缩放。
+     * @param zoom 缩放因子（>1 放大，<1 缩小）
+     * @param centroid 缩放中心点（容器坐标），用于保持中心不变
+     */
+    fun onZoom(zoom: Float, centroid: Offset) {
+        val newScale = (scale.value * zoom).coerceIn(initialMinScale, MAX_SCALE)
+        if (newScale == scale.value) return
+
+        val oldScale = scale.value
+        scale.value = newScale
+
+        // 以缩放中心为锚点调整 offset：让 centroid 对应的图像位置不变
+        val scaleChange = newScale / oldScale
+        offset.value = centroid + (offset.value - centroid) * scaleChange
+
+        clampOffset()
     }
 
     /**
      * 处理单指拖动平移。
-     * @param pan 本次手势增量（容器像素）
-     * @return 夹紧后的最终 offset
      */
     fun onPan(pan: Offset): Offset {
         offset.value += pan
-        Log.d("CropState", "onPan: pan=$pan → rawOffset=${offset.value}")
         clampOffset()
-        Log.d("CropState", "onPan: clamped=${offset.value}  (delta=${offset.value - (pan + (offset.value - pan))})")
         return offset.value
     }
 
     /**
      * 将 offset 限制在合法范围内，保证图片始终覆盖裁剪框，不露出空白。
-     *
-     * 推导（以 X 轴为例）：
-     *   图片左边 = containerCenterX - imgHalfW + offset.x
-     *   图片右边 = containerCenterX + imgHalfW + offset.x
-     *
-     *   要求图片左边 ≤ 裁剪框左边：
-     *     offset.x ≤ cropRect.left - containerCenterX + imgHalfW   → maxOffsetX
-     *
-     *   要求图片右边 ≥ 裁剪框右边：
-     *     offset.x ≥ cropRect.right - containerCenterX - imgHalfW  → minOffsetX
-     *
-     * 边界是固定的几何量，不随 offset 当前值变化。
      */
     fun clampOffset() {
         if (containerSize == Size.Zero || baseFitSize == Size.Zero) return
 
         val cropRect = getCropRect()
         val currentSize = getScaledImageSize()
-
-        Log.d("CropState", "clamp: scaledSize=${currentSize.width.toInt()}x${currentSize.height.toInt()} " +
-                "cropRect=${cropRect.width.toInt()}x${cropRect.height.toInt()}")
 
         val containerCenterX = containerSize.width / 2f
         val containerCenterY = containerSize.height / 2f
@@ -155,24 +157,14 @@ class CropState(
         val clampedX = if (currentSize.width >= cropRect.width) {
             val minOffsetX = cropRect.right - containerCenterX - imgHalfW
             val maxOffsetX = cropRect.left - containerCenterX + imgHalfW
-            val result = offset.value.x.coerceIn(minOffsetX, maxOffsetX)
-            Log.d("CropState", "  X: range[$minOffsetX ~ $maxOffsetX] raw=${offset.value.x} → $result")
-            result
-        } else {
-            // 图片宽度小于裁剪框（正常不应发生），锁定居中
-            0f
-        }
+            offset.value.x.coerceIn(minOffsetX, maxOffsetX)
+        } else { 0f }
 
         val clampedY = if (currentSize.height >= cropRect.height) {
             val minOffsetY = cropRect.bottom - containerCenterY - imgHalfH
             val maxOffsetY = cropRect.top - containerCenterY + imgHalfH
-            val result = offset.value.y.coerceIn(minOffsetY, maxOffsetY)
-            Log.d("CropState", "  Y: range[$minOffsetY ~ $maxOffsetY] raw=${offset.value.y} → $result")
-            result
-        } else {
-            // 图片高度小于裁剪框（正常不应发生），锁定居中
-            0f
-        }
+            offset.value.y.coerceIn(minOffsetY, maxOffsetY)
+        } else { 0f }
 
         offset.value = Offset(clampedX, clampedY)
     }
@@ -195,7 +187,7 @@ class CropState(
      * 获取当前 scale 下图片的实际显示尺寸（baseFitSize × scale）
      */
     fun getScaledImageSize(): Size = Size(
-        baseFitSize.width * scale,
-        baseFitSize.height * scale
+        baseFitSize.width * scale.value,
+        baseFitSize.height * scale.value
     )
 }
