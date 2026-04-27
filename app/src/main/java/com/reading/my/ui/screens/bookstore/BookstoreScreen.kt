@@ -3,19 +3,38 @@ package com.reading.my.ui.screens.bookstore
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AutoStories
+import androidx.compose.material.icons.filled.CalendarToday
+import androidx.compose.material.icons.filled.Category
+import androidx.compose.material.icons.filled.Face
+import androidx.compose.material.icons.filled.GridView
+import androidx.compose.material.icons.filled.HotelClass
+import androidx.compose.material.icons.outlined.ChatBubble
+import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -27,379 +46,492 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.reading.my.ui.theme.PrimaryOrange
+import com.reading.my.ui.theme.*
 
 /**
- * 书库页面（在线阅读 / 发现页）
+ * 书库页面（V2 — UI重构版，参考 Library HTML设计稿）
  *
- * 层次设计（同一色系，通过透明度/圆角/毛玻璃区分层次）：
- *
+ * 视觉层次：
  * ┌──────────────────────────────────────┐
- * │ ░░ 状态栏占位 (padding)              │  ← 最顶层，无额外背景
- * ├──────────────────────────────────────┤
- * │  开源图书    同好小说                │  ← A 类型切换栏
- * │  ┌────────────────────────────┐      │
- * │  │ 🔍 搜索书籍...            │      │  ← B 搜索框 (alpha=0.08 毛玻璃)
- * │  └────────────────────────────┘      │
- * ├──────────────────────────────────────┤
- * │  ┌────────────────────────────┐      │
- * │  │ 📚 热门图书推荐            │      │  ← 热门卡片 (alpha=0.06 渐变)
- * │  │   (悬浮卡片 · 待实现)      │      │
- * │  └────────────────────────────┘      │
+ * │ ░░ 沉浸式深色头图区域                │  ← 背景(blur) + 分类Tab + AI对话按钮
+ * │     毛玻璃搜索栏                     │
+ * │     热门轮播 Banner                  │  ← 指示器圆点
  * ├──────────────────────────────────────╮
- * │  人气图书                   更多 >   │  ← 白底圆角区域 (alpha=1.0 实心)
- * │  ┌───┐┌───┐┌───┐┌───┐               │
- * │  │📖│ │📖│ │📖│ │📖│  4列 × 2排     │  ← 固定网格，不做LazyColumn
- * │  │书名│...                       │
- * │  └───┘└───┘└───┘└───┘               │
- * │  ┌───┐┌───┐┌───┐┌───┐               │
- * │  │📖│ │📖│ │📖│ │📖│               │
- * │  └───┘└───┘└───┘└───┘               │
+ * │ 功能入口网格 (6列): 更新/排行/分类...  │  ← 橙色图标 + 文字标签
  * ├──────────────────────────────────────┤
- * │  (下方留白 / 后续可扩展)             │
+ * │ 人气风向标              更多 >       │  ← 4列书籍封面网格
+ * │ [书][书][书][书]                    │
+ * ├──────────────────────────────────────┤
+ * │ 热门书籍横向列表                     │  ← 封面 + 标题 + 元信息
  * └──────────────────────────────────────┘
+ *
+ * 业务功能保留：
+ * - 类型切换（开源图书/同好小说）
+ * - 搜索入口
+ * - 书籍展示网格
  */
 @Composable
-fun BookstoreScreen(
-    // ========== 主题预留参数 ==========
-    /** 页面背景色（默认跟随主题） */
-    pageBackgroundColor: Color = Color(0xFF9C9CA8),
-    /** 文字主色 */
-    textColorPrimary: Color = Color.White,
-    /** 文字辅助色 */
-    textColorSecondary: Color = Color.White.copy(alpha = 0.5f),
-    /** 卡片/容器背景的叠加层 alpha 值（用于区分层次） */
-    surfaceAlpha: Float = 0.06f,
-    /** 强调色（如橘色的"更多"按钮、选中态等） */
-    accentColor: Color = PrimaryOrange,
-) {
-    var selectedType by remember { mutableIntStateOf(0) } // 0=开源图书, 1=同好小说
-    val isOpenSource = selectedType == 0
+fun BookstoreScreen() {
+    var selectedCategory by remember { mutableIntStateOf(0) } // 0=轻小说, 1=漫画, 2=有声, 3=短篇
 
+    // 整体可滚动容器
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(pageBackgroundColor)   // ← 颜色应延伸到状态栏
+            .background(Color(0xFF1b1c1c)) // 头部深色背景
     ) {
-        // ===== A + B 组件：类型切换栏 + 搜索框 =====
-        TypeAndSearchArea(
-            selectedType = selectedType,
-            onTypeSelected = { selectedType = it },
-            textColorPrimary = textColorPrimary,
-            textColorSecondary = textColorSecondary,
-            surfaceAlpha = surfaceAlpha,
+        // ===== 1. 沉浸式头部区域 =====
+        BookstoreImmersiveHeader(
+            selectedCategory = selectedCategory,
+            onCategorySelected = { selectedCategory = it }
         )
 
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // ===== 热门图书卡片 =====
-        HotBooksPlaceholder(
-            isOpenSource = isOpenSource,
-            surfaceAlpha = surfaceAlpha,
-            textColorPrimary = textColorPrimary,
-            textColorSecondary = textColorSecondary,
-        )
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // ===== 内容区域：标题 + 固定4×2书籍网格 =====
-        BookContentArea(
-            isOpenSource = isOpenSource,
-            accentColor = accentColor,
-        )
-    }
-}
-
-// ==================== AB 组件 ====================
-
-@Composable
-private fun TypeAndSearchArea(
-    selectedType: Int,
-    onTypeSelected: (Int) -> Unit,
-    textColorPrimary: Color,
-    textColorSecondary: Color,
-    surfaceAlpha: Float,
-) {
-    Column(modifier = Modifier
-        .fillMaxWidth()
-        .padding(horizontal = 16.dp)
-    ) {
-        // --- A: 类型切换栏 ---
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(bottom = 12.dp)
-        ) {
-            TypeTabItem(
-                text = "开源图书",
-                selected = selectedType == 0,
-                onClick = { onTypeSelected(0) },
-                textColorPrimary = textColorPrimary,
-                textColorSecondary = textColorSecondary,
-            )
-            Spacer(modifier = Modifier.width(24.dp))
-            TypeTabItem(
-                text = "同好小说",
-                selected = selectedType == 1,
-                onClick = { onTypeSelected(1) },
-                textColorPrimary = textColorPrimary,
-                textColorSecondary = textColorSecondary,
-            )
-        }
-
-        // --- B: 搜索框 ---
-        Box(
+        // ===== 下方内容区（浅色背景） =====
+        Column(
             modifier = Modifier
-                .fillMaxWidth()
-                .height(44.dp)
-                .clip(RoundedCornerShape(12.dp))
-                .background(textColorPrimary.copy(alpha = surfaceAlpha + 0.02f)) // 毛玻璃感
-                .clickable(enabled = false) { /* TODO: 跳转搜索页 */ },
-            contentAlignment = Alignment.CenterStart
+                .weight(1f)
+                .background(Color(0xFFF9F9F9)) // clean-surface
+                .verticalScroll(rememberScrollState())
         ) {
-            Text(
-                text = "搜索书籍...",
-                color = textColorSecondary.copy(alpha = 0.6f),
-                fontSize = 14.sp,
-                modifier = Modifier.padding(start = 16.dp)
-            )
+            // ===== 2. 功能图标网格 =====
+            FunctionIconGrid()
+
+            // ===== 3. 人气风向标（4列书籍网格） =====
+            PopularBooksSection()
+
+            // ===== 4. 热门书籍列表（横向） =====
+            HotBookListSection()
+
+            Spacer(modifier = Modifier.height(24.dp))
         }
     }
 }
 
-/** 单个类型标签 */
+// ==================== 1. 沉浸式头部区域 ====================
+
 @Composable
-private fun TypeTabItem(
-    text: String,
-    selected: Boolean,
-    onClick: () -> Unit,
-    textColorPrimary: Color,
-    textColorSecondary: Color,
+private fun BookstoreImmersiveHeader(
+    selectedCategory: Int,
+    onCategorySelected: (Int) -> Unit,
 ) {
-    Text(
-        text = text,
-        fontSize = if (selected) 18.sp else 15.sp,
-        fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
-        color = if (selected) textColorPrimary else textColorSecondary,
-        modifier = Modifier
-            .clickable(onClick = onClick)
-            .padding(vertical = 4.dp)
-    )
+    Box(modifier = Modifier.fillMaxWidth()) {
+        // TODO: 头部背景图加载 - 需要网络图片或本地资源
+        // 参考设计: 氛围感背景图 + blur-sm + brightness-0.5
+        // 当前使用纯深色背景替代
+
+        Column(modifier = Modifier.fillMaxWidth()) {
+            // 状态栏占位 + 内边距
+            Spacer(modifier = Modifier.height(48.dp))
+
+            // --- 顶部分类Tab + AI对话按钮 ---
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // 左侧分类Tab组
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(20.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    val categories = listOf("轻小说", "漫画", "有声", "短篇")
+                    categories.forEachIndexed { index, category ->
+                        val isSelected = index == selectedCategory
+                        Text(
+                            text = category,
+                            fontSize = 17.sp,
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                            color = if (isSelected) Color.White else Color.White.copy(alpha = 0.7f),
+                            modifier = Modifier.clickable { onCategorySelected(index) }
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.weight(1f))
+
+                // 右侧：AI对话按钮
+                Row(
+                    modifier = Modifier
+                        .clip(CircleShape)
+                        .background(Color.White)
+                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(24.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFFFFE0CC)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.ChatBubble,
+                            contentDescription = null,
+                            tint = Color(0xFFff6419),
+                            modifier = Modifier.size(14.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = "对话",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.Black
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // --- 毛玻璃搜索栏 ---
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp)
+                    .height(40.dp)
+                    .clip(CircleShape)
+                    .background(Color.White.copy(alpha = 0.15f))
+                    .clickable(enabled = false) { /* TODO: 打开搜索页 */ },
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Spacer(modifier = Modifier.width(14.dp))
+                Icon(
+                    imageVector = Icons.Outlined.Search,
+                    contentDescription = null,
+                    tint = Color.White.copy(alpha = 0.6f),
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "搜索热门书籍",
+                    fontSize = 14.sp,
+                    color = Color.White.copy(alpha = 0.5f)
+                )
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // --- 热门轮播Banner ---
+            HotBannerCarousel()
+        }
+    }
 }
 
-// ==================== 热门图书占位 ====================
-
+/** 热门轮播Banner */
 @Composable
-private fun HotBooksPlaceholder(
-    isOpenSource: Boolean,
-    surfaceAlpha: Float,
-    textColorPrimary: Color,
-    textColorSecondary: Color,
-) {
+private fun HotBannerCarousel() {
+    // TODO: Banner数据加载 - 需要从后端获取轮播数据
+    // 当前使用占位UI
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(160.dp)
-            .clip(RoundedCornerShape(16.dp))
-            .padding(horizontal = 8.dp)
-            .background(
-                Brush.horizontalGradient(
-                    colors = listOf(
-                        textColorPrimary.copy(alpha = surfaceAlpha + 0.04f),
-                        textColorPrimary.copy(alpha = surfaceAlpha),
-                    )
-                )
-            ),
-        contentAlignment = Alignment.Center
+            .padding(horizontal = 16.dp)
+            .height(130.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(Brush.horizontalGradient(
+                colors = listOf(Color.White.copy(alpha = 0.6f), Color.White.copy(alpha = 0.2f))
+            ))
     ) {
-        if (isOpenSource) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(
-                    text = "热门图书推荐",
-                    color = textColorPrimary.copy(alpha = 0.7f),
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Medium
-                )
-                Spacer(modifier = Modifier.height(6.dp))
-                Text(
-                    text = "悬浮卡片 · 待实现",
-                    color = textColorSecondary.copy(alpha = 0.5f),
-                    fontSize = 12.sp
+        // Banner 内容
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.Center
+        ) {
+            Text(
+                text = "热门书籍推荐",
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color(0xFF333333)
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = "精彩内容不容错过...",
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Medium,
+                color = Color(0xFF666666)
+            )
+        }
+
+        // 指示器圆点
+        Row(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            repeat(4) { index ->
+                Box(
+                    modifier = Modifier
+                        .size(6.dp)
+                        .clip(CircleShape)
+                        .background(if (index == 0) Color.White else Color.White.copy(alpha = 0.4f))
                 )
             }
-        } else {
+        }
+    }
+}
+
+// ==================== 2. 功能图标网格 ====================
+
+data class FunctionIconItem(val icon: ImageVector, val label: String)
+
+private val functionIcons = listOf(
+    FunctionIconItem(Icons.Default.HotelClass, "今日更新"),
+    FunctionIconItem(Icons.Default.GridView, "排行榜"),
+    FunctionIconItem(Icons.Default.Category, "分类"),
+    FunctionIconItem(Icons.Default.AutoStories, "书单"),
+    FunctionIconItem(Icons.Default.CalendarToday, "男主"),
+    FunctionIconItem(Icons.Default.Face, "女主")
+)
+
+@Composable
+private fun FunctionIconGrid() {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 16.dp, bottom = 12.dp)
+            .background(Color(0xFFF9F9F9))
+    ) {
+        // 6列网格
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.SpaceEvenly
+        ) {
+            functionIcons.forEachIndexed { index, item ->
+                FunctionIconCard(
+                    icon = item.icon,
+                    label = item.label,
+                    onClick = {
+                        when (index) {
+                            0 -> { /* TODO: 进入今日更新页 */ }
+                            1 -> { /* TODO: 进入排行榜页 */ }
+                            2 -> { /* TODO: 进入分类浏览页 */ }
+                            3 -> { /* TODO: 进入书单页 */ }
+                            4 -> { /* TODO: 进入男主分类 */ }
+                            5 -> { /* TODO: 进入女主分类 */ }
+                        }
+                    }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun FunctionIconCard(
+    icon: ImageVector,
+    label: String,
+    onClick: () -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .width(52.dp)
+            .clickable(onClick = onClick),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .size(40.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = label,
+                tint = PrimaryOrange,
+                modifier = Modifier.size(28.dp)
+            )
+        }
+        Text(
+            text = label,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Medium,
+            color = TextPrimary,
+            textAlign = TextAlign.Center
+        )
+    }
+}
+
+// ==================== 3. 人气风向标 ====================
+
+@Composable
+private fun PopularBooksSection() {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 12.dp)
+    ) {
+        // 标题行
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.Bottom
+        ) {
+            Row(verticalAlignment = Alignment.Bottom) {
+                Text(
+                    text = "人气风向标",
+                    fontSize = 19.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = TextPrimary
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "(更新稳定有特点)",
+                    fontSize = 12.sp,
+                    color = TextSecondary
+                )
+            }
             Text(
-                text = "同好小说 · 敬请期待",
-                color = textColorSecondary.copy(alpha = 0.35f),
-                fontSize = 14.sp
+                text = "更多",
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Medium,
+                color = PrimaryOrange,
+                modifier = Modifier.clickable(enabled = false) { /* TODO: 进入更多人气榜单 */ }
+            )
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        // 4列书籍网格
+        LazyVerticalGrid(
+            columns = GridCells.Fixed(4),
+            modifier = Modifier.height(180.dp), // 固定高度约一排
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+            userScrollEnabled = false
+        ) {
+            items(popularSampleBooks.take(4)) { book ->
+                PopularBookItem(title = book.title)
+            }
+        }
+    }
+}
+
+// ==================== 4. 热门书籍横向列表 ====================
+
+@Composable
+private fun HotBookListSection() {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 16.dp, end = 16.dp, top = 24.dp)
+    ) {
+        LazyRow(
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            contentPadding = PaddingValues(vertical = 8.dp)
+        ) {
+            items(hotListBooks) { book ->
+                HotListBookItem(
+                    title = book.title,
+                    subtitle = book.subtitle
+                )
+            }
+        }
+    }
+}
+
+/** 人气风向标单个书籍 */
+@Composable
+private fun PopularBookItem(title: String) {
+    Column(
+        modifier = Modifier.clickable(enabled = false) { /* TODO: 进入书籍详情 */ },
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        // 封面占位
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(3f / 4f)
+                .clip(RoundedCornerShape(4.dp))
+                .background(Color(0xFFe8e4df)), // stone-200
+            contentAlignment = Alignment.Center
+        ) {
+            // TODO: 封面图加载
+        }
+
+        Spacer(modifier = Modifier.height(4.dp))
+
+        // 书名
+        Text(
+            text = title,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Bold,
+            color = TextPrimary,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            lineHeight = 15.sp,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.fillMaxWidth()
+        )
+    }
+}
+
+/** 热门列表项（横排：小封面 + 标题 + 信息） */
+@Composable
+private fun HotListBookItem(title: String, subtitle: String) {
+    val rowModifier = Modifier
+        .width(280.dp)
+        .clickable(enabled = false) { }
+
+    Row(modifier = rowModifier, verticalAlignment = Alignment.CenterVertically) {
+        Box(
+            modifier = Modifier
+                .size(width = 64.dp, height = 85.dp)
+                .clip(RoundedCornerShape(4.dp))
+                .background(Color(0xFFe8e4df)),
+            contentAlignment = Alignment.Center
+        ) { /* TODO */ }
+
+        Spacer(modifier = Modifier.width(12.dp))
+
+        Column {
+            Text(
+                text = title,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Bold,
+                color = TextPrimary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = subtitle,
+                fontSize = 12.sp,
+                color = TextSecondary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
             )
         }
     }
 }
 
-// ==================== 书籍内容区 ====================
+// ==================== 示例数据 ====================
 
-/**
- * 内容区：标题栏 + 固定4列×2排网格
- * 正方形全宽填充（非圆角卡片），填满剩余空间
- */
-@Composable
-private fun BookContentArea(
-    isOpenSource: Boolean,
-    accentColor: Color,
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .fillMaxHeight() // 填满剩余全部空间，正方形
-            .background(Color(0xFFDCD1D1))
-            .padding(horizontal = 16.dp, vertical = 16.dp)
-    ) {
-        // 标题栏
-        BookSectionHeader(accentColor = accentColor)
-
-        // 固定 4列 × 2排 网格（不做 LazyColumn）
-        if (isOpenSource) {
-            FixedBookGrid(books = sampleBooks)
-        } else {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(200.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = "同好小说内容 · 敬请期待",
-                    color = Color(0xFFCCCCCC),
-                    fontSize = 14.sp
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun BookSectionHeader(accentColor: Color) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(bottom = 12.dp, start = 16.dp, end = 16.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(
-            text = "人气图书",
-            fontSize = 17.sp,
-            fontWeight = FontWeight.Bold,
-            color = Color(0xFF333333)
-        )
-        Text(
-            text = "更多",
-            fontSize = 13.sp,
-            fontWeight = FontWeight.Medium,
-            color = accentColor,
-            modifier = Modifier
-                .clickable(enabled = false) { /* TODO: 进入更多页(LazyColumn) */ }
-                .padding(horizontal = 4.dp, vertical = 2.dp)
-        )
-    }
-}
-
-// ==================== 固定书籍网格（4列 × 2排）====================
-
-/** 书籍数据模型 */
-data class BookItem(
-    val id: String,
-    val title: String,
-    val author: String,
-    val coverUrl: String? = null
+/** 人气风向标示例数据 */
+private data class SimpleBook(val title: String)
+private val popularSampleBooks = listOf(
+    SimpleBook("【书籍A】"), SimpleBook("【书籍B】"),
+    SimpleBook("【书籍C】"), SimpleBook("【书籍D】"),
+    SimpleBook("【书籍E】"), SimpleBook("【书籍F】"),
+    SimpleBook("【书籍G】"), SimpleBook("【书籍H】")
 )
 
-/** 示例数据（8本 = 4列×2排） */
-private val sampleBooks = listOf(
-    BookItem("1", "三体", "刘慈欣"),
-    BookItem("2", "活着", "余华"),
-    BookItem("3", "百年孤独", "加西亚·马尔克斯"),
-    BookItem("4", "围城", "钱钟书"),
-    BookItem("5", "平凡的世界", "路遥"),
-    BookItem("6", "白夜行", "东野圭吾"),
-    BookItem("7", "红楼梦", "曹雪芹"),
-    BookItem("8", "追风筝的人", "卡勒德·胡赛尼"),
+/** 热门列表示例数据 */
+private data class HotListBook(val title: String, val subtitle: String)
+private val hotListBooks = listOf(
+    HotListBook("【热门书籍】", "分类 / 标签 / 状态"),
+    HotListBook("【精品推荐】", "分类 / 标签 / 状态"),
+    HotListBook("【新书速递】", "分类 / 标签 / 状态"),
+    HotListBook("【编辑精选】", "分类 / 标签 / 状态")
 )
-
-/**
- * 固定 4 列 x 2 排 书籍网格
- *
- * 使用 Row + Column 手动布局而非 LazyVerticalGrid，
- * 因为这里只需要展示固定数量的书籍入口，
- * 更多列表功能移入"更多"页面。
- */
-@Composable
-private fun FixedBookGrid(books: List<BookItem>) {
-    // 分成两行，每行4本
-    val rows = books.chunked(4)
-
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        rows.forEach { rowBooks ->
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceEvenly
-            ) {
-                rowBooks.forEach { book ->
-                    BookGridItem(book = book)
-                }
-            }
-        }
-    }
-}
-
-/** 单个书籍单元 */
-@Composable
-private fun BookGridItem(book: BookItem) {
-    Column(
-        modifier = Modifier
-            .width(72.dp)
-            .clickable(enabled = false) { /* TODO: 进入详情 */ },
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        // 封面（圆角矩形，无边框，无图时淡紫底+图标）
-        Box(
-            modifier = Modifier
-                .size(width = 72.dp, height = 96.dp)
-                .clip(RoundedCornerShape(6.dp))
-                .background(Color(0xFFF0ECF5)), // 极淡紫灰
-            contentAlignment = Alignment.Center
-        ) {
-
-        }
-
-        Spacer(modifier = Modifier.height(6.dp))
-
-        // 书名（最多2行省略）
-        Text(
-            text = book.title.ifBlank { "未命名" },
-            fontSize = 12.sp,
-            fontWeight = FontWeight.Medium,
-            color = Color(0xFF333333),
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.fillMaxWidth()
-        )
-
-        Spacer(modifier = Modifier.height(2.dp))
-
-        // 作者
-        Text(
-            text = book.author.ifBlank { "未知作者" },
-            fontSize = 10.sp,
-            color = Color(0xFF999999),
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-    }
-}

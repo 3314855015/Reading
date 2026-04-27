@@ -1,339 +1,489 @@
 package com.reading.my.ui.screens.profile
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material.icons.outlined.AutoAwesome
+import androidx.compose.material.icons.outlined.CalendarToday
+import androidx.compose.material.icons.outlined.ChatBubble
+import androidx.compose.material.icons.outlined.ConfirmationNumber
+import androidx.compose.material.icons.outlined.DarkMode
+import androidx.compose.material.icons.outlined.Download
+import androidx.compose.material.icons.outlined.EventAvailable
+import androidx.compose.material.icons.outlined.FormatListBulleted
+import androidx.compose.material.icons.outlined.History
+import androidx.compose.material.icons.outlined.HistoryEdu
+import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.Palette
+import androidx.compose.material.icons.outlined.RateReview
+import androidx.compose.material.icons.outlined.ShoppingBag
+import androidx.compose.material3.Icon
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.foundation.layout.offset
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import coil.compose.AsyncImage
 import com.reading.my.ui.theme.*
 
+/**
+ * 我的页面（V2 — UI重构版，参考 Profile HTML设计稿）
+ *
+ * 视觉层次：
+ * ┌──────────────────────────────────────┐
+ * │ ░░ 深色径向渐变头图区域               │  ← 暗棕→黑渐变 + 模糊背景
+ * │     [签到] 按钮                      │  ← 右上角
+ * │     ┌─ 用户信息卡（白圆角）────────┐│  ← 头像(悬浮) + 昵称 + 简介
+ * │     └─────────────────────────────┘│
+ * ├──────────────────────────────────────╮
+ * │ 功能网格 (4×2): 预约|空间|消息|月票  │  ← 白色圆角图标卡片
+ * │              道具|作者|商城|书单    │
+ * ├──────────────────────────────────────┤
+ * │ 设置列表（大白圆角卡片）              │  ← 夜间模式 / 阅读时长 ...
+ * │                                     │
+ * └──────────────────────────────────────┘
+ */
 @Composable
 fun ProfileScreen(
-    onNavigateToProfile: () -> Unit = {},   // 跳转个人动态
-    onNavigateToAssociate: () -> Unit = {}, // 跳转关联页
-    onNavigateToBookList: () -> Unit = {},  // 本地书籍列表
-    onNavigateToPublish: () -> Unit = {},   // 发布列表
-    onNavigateToGroup: () -> Unit = {},     // 圈子列表
+    onNavigateToProfile: () -> Unit = {},
+    onNavigateToAssociate: () -> Unit = {},
+    onNavigateToBookList: () -> Unit = {},
+    onNavigateToPublish: () -> Unit = {},
+    onNavigateToGroup: () -> Unit = {},
     viewModel: ProfileViewModel = hiltViewModel()
 ) {
-    val uiState by viewModel.uiState.collectAsState()
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
+    // 整体可滚动布局
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(BackgroundGray)
+            .background(Color(0xFFfcf9f8)) // 奶油色纸质背景
             .verticalScroll(rememberScrollState())
     ) {
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // ── 模块一：个人信息（用户） ──────────────────────────────
-        UserInfoCard(
+        // ===== 1. 深色渐变头部 + 用户信息卡 =====
+        ProfileHeaderSection(
             username = uiState.username,
             bio = uiState.bio,
             avatarUrl = uiState.avatarUrl,
-            onClick = onNavigateToProfile
+            onClickUserCard = onNavigateToProfile,
+            isDarkMode = uiState.isDarkMode,
+            onDarkModeToggle = { viewModel.toggleDarkMode() }
         )
 
-        Spacer(modifier = Modifier.height(12.dp))
-
-        // ── 模块二：个人信息（APP） ───────────────────────────────
-        AppInfoCard(
-            isAssociated = uiState.isAssociated,
+        // ===== 2. 功能网格 (4列 × 2行) =====
+        FunctionGridSection(
             localCount = uiState.localCount,
+            onBookListClick = onNavigateToBookList,
             publishCount = uiState.publishCount,
-            groupCount = uiState.groupCount,
-            onAssociateClick = onNavigateToAssociate,
-            onLocalClick = onNavigateToBookList,
             onPublishClick = onNavigateToPublish,
+            groupCount = uiState.groupCount,
             onGroupClick = onNavigateToGroup
         )
 
-        Spacer(modifier = Modifier.height(12.dp))
-
-        // ── 模块三：系统设置 ──────────────────────────────────────
-        SettingsCard(
+        // ===== 3. 设置列表 =====
+        SettingsSection(
+            readingTime = "12.5 小时", // TODO: 加载真实阅读时长
             isDarkMode = uiState.isDarkMode,
-            isNetworkVerify = uiState.isNetworkVerify,
-            onDarkModeToggle = { viewModel.toggleDarkMode() },
-            onNetworkVerifyToggle = { viewModel.toggleNetworkVerify() }
+            onDarkModeToggle = { viewModel.toggleDarkMode() }
         )
 
-        Spacer(modifier = Modifier.height(24.dp))
+        Spacer(modifier = Modifier.height(32.dp))
     }
 }
 
-// ══════════════════════════════════════════════════════════════
-// 模块一：个人信息（用户）
-// ══════════════════════════════════════════════════════════════
+// ==================== 1. 渐变头部 + 用户信息卡 ====================
 
 @Composable
-private fun UserInfoCard(
+private fun ProfileHeaderSection(
     username: String,
     bio: String?,
     avatarUrl: String?,
-    onClick: () -> Unit
+    onClickUserCard: () -> Unit,
+    isDarkMode: Boolean,
+    onDarkModeToggle: () -> Unit,
 ) {
-    Card(
+    Box(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp)
-            .clickable(onClick = onClick),
-        shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+            .background(Brush.radialGradient(
+                colors = listOf(Color(0xFF4a3728), Color(0xFF1b1c1c))
+            ))
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            // 左 1/4：圆形头像
-            Box(
+        Column(modifier = Modifier.fillMaxWidth()) {
+            // TODO: 头部模糊背景图加载 - 需要网络图片或本地资源
+            // 参考设计: 氛围感图片 + opacity-0.3 + blur-2xl + scale-110
+            // 当前使用纯渐变替代
+
+            Spacer(modifier = Modifier.height(32.dp))
+
+            // 右上角签到按钮
+            Row(
                 modifier = Modifier
-                    .weight(1f)
-                    .aspectRatio(1f)
-                    .clip(CircleShape)
-                    .background(PrimaryOrange.copy(alpha = 0.12f)),
-                contentAlignment = Alignment.Center
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp),
+                horizontalArrangement = Arrangement.End
             ) {
-                if (!avatarUrl.isNullOrBlank()) {
-                    AsyncImage(
-                        model = avatarUrl,
-                        contentDescription = "用户头像",
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize()
+                Row(
+                    modifier = Modifier
+                        .clip(CircleShape)
+                        .background(Color.Black.copy(alpha = 0.40f))
+                        .border(1.dp, Color.White.copy(alpha = 0.10f), CircleShape)
+                        .clickable(enabled = false) { /* TODO: 打开签到页面 */ }
+                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.CalendarToday,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(14.dp)
                     )
-                } else {
                     Text(
-                        text = username.firstOrNull()?.uppercase() ?: "?",
-                        fontSize = 28.sp,
+                        text = "签到",
+                        fontSize = 10.sp,
                         fontWeight = FontWeight.Bold,
-                        color = PrimaryOrange
+                        color = Color.White
                     )
                 }
             }
 
-            Spacer(modifier = Modifier.width(16.dp))
+            Spacer(modifier = Modifier.height(24.dp))
 
-            // 右 3/4：昵称 + 简介
-            Column(
-                modifier = Modifier.weight(3f),
-                verticalArrangement = Arrangement.Center
+            // 用户信息卡片（向上浮动效果）
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp)
             ) {
-                // 昵称（1/3 高度感）
-                Text(
-                    text = username.ifBlank { "未设置昵称" },
-                    fontSize = 17.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = TextPrimary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                // 白色圆角卡片
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(32.dp))
+                        .background(Color.White.copy(alpha = 0.95f))
+                        .border(1.dp, Color.White.copy(alpha = 0.20f), RoundedCornerShape(32.dp))
+                        .clickable(onClick = onClickUserCard)
+                        .padding(top = 28.dp, bottom = 20.dp, start = 24.dp, end = 24.dp)
+                        .padding(bottom = 4.dp), // 微调底部间距
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    // 头像（悬浮在顶部边缘）
+                    Box(
+                        modifier = Modifier
+                            .size(80.dp)
+                            .offset(y = (-52).dp) // 向上偏移悬浮
+                            .clip(CircleShape)
+                            .background(Color.White)
+                            .border(2.dp, Color(0xFFf0ece9), CircleShape),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        if (!avatarUrl.isNullOrBlank()) {
+                            AsyncImage(
+                                model = avatarUrl,
+                                contentDescription = "用户头像",
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .clip(CircleShape)
+                            )
+                        } else {
+                            Text(
+                                text = username.firstOrNull()?.uppercase() ?: "?",
+                                fontSize = 28.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = PrimaryOrange
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // 昵称
+                    Text(
+                        text = username.ifBlank { "未设置昵称" },
+                        fontSize = 22.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.Serif,
+                        color = Color(0xFF1b1c1c),
+                        letterSpacing = (-0.5).sp
+                    )
+
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    // 简介
+                    Text(
+                        text = bio?.takeIf { it.isNotBlank() }
+                            ?: "资深读者与策展人。热爱在静谧的午后探索文字的奥秘，寻找心灵的避风港。",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = Color(0xFF999999),
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        lineHeight = 17.sp,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.padding(horizontal = 16.dp)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
+        }
+    }
+}
+
+// ==================== 2. 功能网格 ====================
+
+data class FunctionGridItem(val icon: ImageVector, val label: String)
+
+private val functionGridItems = listOf(
+    FunctionGridItem(Icons.Outlined.EventAvailable, "我的预约"),
+    FunctionGridItem(Icons.Outlined.Palette, "装饰空间"),
+    FunctionGridItem(Icons.Outlined.ChatBubble, "我的消息"),
+    FunctionGridItem(Icons.Outlined.ConfirmationNumber, "我的月票"),
+    FunctionGridItem(Icons.Outlined.AutoAwesome, "我的道具"),
+    FunctionGridItem(Icons.Outlined.HistoryEdu, "成为作者"),
+    FunctionGridItem(Icons.Outlined.ShoppingBag, "周边商城"),
+    FunctionGridItem(Icons.Outlined.FormatListBulleted, "我的书单")
+)
+
+@Composable
+private fun FunctionGridSection(
+    localCount: Int,
+    onBookListClick: () -> Unit,
+    publishCount: Int,
+    onPublishClick: () -> Unit,
+    groupCount: Int,
+    onGroupClick: () -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Color(0xFFfcf9f8))
+            .padding(horizontal = 24.dp, vertical = 16.dp)
+    ) {
+        // 第一行
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceEvenly
+        ) {
+            functionGridItems.take(4).forEachIndexed { index, item ->
+                FunctionIconCard(
+                    icon = item.icon,
+                    label = item.label,
+                    onClick = {
+                        when (index) {
+                            0 -> { /* TODO: 进入我的预约页 */ }
+                            1 -> { /* TODO: 进入装饰空间 */ }
+                            2 -> { /* TODO: 进入我的消息页 */ }
+                            3 -> { /* TODO: 进入我的月票页 */ }
+                        }
+                    }
                 )
+            }
+        }
 
-                Spacer(modifier = Modifier.height(6.dp))
+        Spacer(modifier = Modifier.height(24.dp))
 
-                // 简介（2/3 高度感，无简介时显示占位文案）
-                Text(
-                    text = bio?.takeIf { it.isNotBlank() } ?: "该作家没有介绍自己噢",
-                    fontSize = 13.sp,
-                    color = if (bio.isNullOrBlank()) TextDisabled else TextSecondary,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                    lineHeight = 18.sp
+        // 第二行
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceEvenly
+        ) {
+            // 前三个功能项
+            functionGridItems.drop(4).take(3).forEachIndexed { index, item ->
+                FunctionIconCard(
+                    icon = item.icon,
+                    label = item.label,
+                    onClick = {
+                        when (index) {
+                            0 -> { /* TODO: 进入我的道具页 */ }
+                            1 -> { onPublishClick() } // 成为作者 → 已有业务逻辑
+                            2 -> { /* TODO: 进入周边商城 */ }
+                        }
+                    }
                 )
             }
 
-            // 右箭头提示可点击
-            Icon(
-                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                contentDescription = null,
-                tint = TextDisabled,
-                modifier = Modifier.size(20.dp)
+            // 第四个：我的书单 → 关联已有业务逻辑
+            FunctionIconCard(
+                icon = Icons.Outlined.FormatListBulleted,
+                label = "我的书单",
+                onClick = onBookListClick
             )
         }
     }
 }
 
-// ══════════════════════════════════════════════════════════════
-// 模块二：个人信息（APP）
-// ══════════════════════════════════════════════════════════════
-
+/** 功能图标卡片：圆角白底 + 图标 + 文字 */
 @Composable
-private fun AppInfoCard(
-    isAssociated: Boolean,
-    localCount: Int,
-    publishCount: Int,
-    groupCount: Int,
-    onAssociateClick: () -> Unit,
-    onLocalClick: () -> Unit,
-    onPublishClick: () -> Unit,
-    onGroupClick: () -> Unit
+private fun FunctionIconCard(
+    icon: ImageVector,
+    label: String,
+    onClick: () -> Unit,
 ) {
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp),
-        shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
-    ) {
-        Column(modifier = Modifier.fillMaxWidth()) {
-
-            // 标题栏
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text(
-                    text = "我的账户",
-                    fontSize = 12.sp,
-                    color = TextHint,
-                    fontWeight = FontWeight.Normal
-                )
-                Text(
-                    text = if (isAssociated) "已关联" else "去关联",
-                    fontSize = 12.sp,
-                    color = if (isAssociated) SuccessGreen else PrimaryOrange,
-                    fontWeight = FontWeight.Medium,
-                    modifier = Modifier.clickable(onClick = onAssociateClick)
-                )
-            }
-
-            HorizontalDivider(color = DividerColor, thickness = 0.5.dp)
-
-            // 统计行
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 16.dp),
-                horizontalArrangement = Arrangement.SpaceEvenly
-            ) {
-                StatItem(label = "本地", count = localCount, onClick = onLocalClick)
-                StatItem(label = "发布", count = publishCount, onClick = onPublishClick)
-                StatItem(label = "圈子", count = groupCount, onClick = onGroupClick)
-                // 留白占位
-                Spacer(modifier = Modifier.weight(1f))
-            }
-        }
-    }
-}
-
-@Composable
-private fun RowScope.StatItem(label: String, count: Int, onClick: () -> Unit) {
     Column(
-        modifier = Modifier
-            .weight(1f)
-            .clickable(onClick = onClick),
-        horizontalAlignment = Alignment.CenterHorizontally
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+        modifier = Modifier.clickable(onClick = onClick)
     ) {
-        Text(
-            text = count.toString(),
-            fontSize = 20.sp,
-            fontWeight = FontWeight.Bold,
-            color = TextPrimary
-        )
-        Spacer(modifier = Modifier.height(2.dp))
+        // 图标容器
+        Box(
+            modifier = Modifier
+                .size(56.dp)
+                .clip(RoundedCornerShape(18.dp))
+                .background(Color.White)
+                .border(1.dp, Color(0xFFf5f0ed), RoundedCornerShape(18.dp)),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = label,
+                tint = Color(0xFF666666), // stone-600
+                modifier = Modifier.size(24.dp)
+            )
+        }
+        // 标签文字
         Text(
             text = label,
             fontSize = 12.sp,
-            color = TextHint
+            fontWeight = FontWeight.Bold,
+            color = Color(0xFF888888), // stone-500
+            textAlign = TextAlign.Center
         )
     }
 }
 
-// ══════════════════════════════════════════════════════════════
-// 模块三：系统设置
-// ══════════════════════════════════════════════════════════════
+// ==================== 3. 设置列表 ====================
 
 @Composable
-private fun SettingsCard(
+private fun SettingsSection(
+    readingTime: String,
     isDarkMode: Boolean,
-    isNetworkVerify: Boolean,
     onDarkModeToggle: () -> Unit,
-    onNetworkVerifyToggle: () -> Unit
 ) {
-    Card(
+    Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp),
-        shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+            .padding(horizontal = 24.dp)
     ) {
-        Column(modifier = Modifier.fillMaxWidth()) {
+        // 大圆角白色容器
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(24.dp))
+                .background(Color.White)
+                .border(1.dp, Color(0xFFF5f0ed), RoundedCornerShape(24.dp))
+        ) {
+            // 夜间模式
+            SettingRowWithSwitch(
+                icon = Icons.Outlined.DarkMode,
+                title = "夜间模式",
+                checked = isDarkMode,
+                onToggle = onDarkModeToggle
+            )
 
-            // 第一行：1:1 两个 Toggle 设置
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 4.dp)
-            ) {
-                ToggleSettingItem(
-                    modifier = Modifier.weight(1f),
-                    label = if (isDarkMode) "夜间模式" else "日间模式",
-                    checked = isDarkMode,
-                    onToggle = onDarkModeToggle
-                )
-                VerticalDivider(
-                    modifier = Modifier
-                        .height(48.dp)
-                        .padding(vertical = 8.dp),
-                    color = DividerColor
-                )
-                ToggleSettingItem(
-                    modifier = Modifier.weight(1f),
-                    label = if (isNetworkVerify) "网络验证" else "本地验证",
-                    checked = isNetworkVerify,
-                    onToggle = onNetworkVerifyToggle
-                )
-            }
+            // 分割线
+            HorizontalDivider(color = Color(0xFFFAFAF9), thickness = 0.5.dp)
 
-            HorizontalDivider(color = DividerColor, thickness = 0.5.dp)
+            // 阅读时长
+            SettingRowWithArrow(
+                icon = Icons.Outlined.History,
+                title = "阅读时长",
+                value = readingTime,
+                onClick = { /* TODO: 跳转阅读统计详情 */ }
+            )
 
-            // 以下为占位设置项（后续按需添加）
-            SettingRow(label = "阅读偏好", value = "默认")
-            HorizontalDivider(color = DividerColor, thickness = 0.5.dp)
-            SettingRow(label = "缓存管理", value = "清理")
-            HorizontalDivider(color = DividerColor, thickness = 0.5.dp)
-            SettingRow(label = "关于", value = "v1.0.0")
+            HorizontalDivider(color = Color(0xFFFAFAF9), thickness = 0.5.dp)
+
+            // 意见反馈
+            SettingRowWithArrow(
+                icon = Icons.Outlined.RateReview,
+                title = "意见反馈",
+                value = null,
+                onClick = { /* TODO: 打开意见反馈 */ }
+            )
+
+            HorizontalDivider(color = Color(0xFFFAFAF9), thickness = 0.5.dp)
+
+            // 关于
+            SettingRowWithArrow(
+                icon = Icons.Outlined.Info,
+                title = "关于",
+                value = null,
+                onClick = { /* TODO: 打开关于页面 */ }
+            )
         }
+
+        Spacer(modifier = Modifier.height(24.dp))
     }
 }
 
+/** 设置项：左侧图标 + 标题 + 右侧开关 */
 @Composable
-private fun ToggleSettingItem(
-    modifier: Modifier = Modifier,
-    label: String,
+private fun SettingRowWithSwitch(
+    icon: ImageVector,
+    title: String,
     checked: Boolean,
-    onToggle: () -> Unit
+    onToggle: () -> Unit,
 ) {
     Row(
-        modifier = modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onToggle() }
+            .padding(horizontal = 20.dp, vertical = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
-        Text(text = label, fontSize = 14.sp, color = TextPrimary)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = Color(0xFFAAAAAA), // stone-400
+                modifier = Modifier.size(22.dp)
+            )
+            Spacer(modifier = Modifier.width(16.dp))
+            Text(
+                text = title,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = Color(0xFF555555) // stone-700
+            )
+        }
+
         Switch(
             checked = checked,
             onCheckedChange = { onToggle() },
@@ -341,32 +491,74 @@ private fun ToggleSettingItem(
                 checkedThumbColor = Color.White,
                 checkedTrackColor = PrimaryOrange,
                 uncheckedThumbColor = Color.White,
-                uncheckedTrackColor = DividerColor
-            )
+                uncheckedTrackColor = Color(0xFFe0dcd9)
+            ),
+            modifier = Modifier.height(24.dp)
         )
     }
 }
 
+/** 设置项：左侧图标 + 标题 + 右侧值 + 箭头 */
 @Composable
-private fun SettingRow(label: String, value: String) {
+private fun SettingRowWithArrow(
+    icon: ImageVector,
+    title: String,
+    value: String?,
+    onClick: () -> Unit,
+) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable { }
-            .padding(horizontal = 16.dp, vertical = 14.dp),
+            .clickable(onClick = onClick)
+            .padding(horizontal = 20.dp, vertical = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
-        Text(text = label, fontSize = 14.sp, color = TextPrimary)
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(text = value, fontSize = 13.sp, color = TextHint)
-            Spacer(modifier = Modifier.width(4.dp))
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = Color(0xFFAAAAAA),
+                modifier = Modifier.size(22.dp)
+            )
+            Spacer(modifier = Modifier.width(16.dp))
+            Text(
+                text = title,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = Color(0xFF555555)
+            )
+        }
+
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            if (value != null) {
+                Text(
+                    text = value,
+                    fontSize = 14.sp,
+                    color = Color(0xFFAAAAAA) // stone-400
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+            }
             Icon(
                 imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
                 contentDescription = null,
-                tint = TextDisabled,
-                modifier = Modifier.size(16.dp)
+                tint = Color(0xFFDDDDDD), // stone-300
+                modifier = Modifier.size(20.dp)
             )
         }
     }
+}
+
+@Composable
+private fun HorizontalDivider(
+    modifier: Modifier = Modifier,
+    color: Color = DividerColor,
+    thickness: Dp = 1.dp
+) {
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(thickness)
+            .background(color)
+    )
 }

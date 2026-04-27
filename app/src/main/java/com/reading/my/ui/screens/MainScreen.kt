@@ -8,22 +8,35 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.LibraryBooks
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.LibraryBooks
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.outlined.Book
+import androidx.compose.material.icons.outlined.Explore
+import androidx.compose.material.icons.outlined.Groups
+import androidx.compose.material.icons.outlined.MenuBook
+import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.Scaffold
@@ -37,6 +50,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
@@ -47,6 +61,8 @@ import com.reading.my.ui.navigation.BottomNavItem
 import com.reading.my.ui.navigation.Screen
 import com.reading.my.ui.theme.BackgroundGray
 import com.reading.my.ui.theme.PrimaryOrange
+import com.reading.my.ui.theme.TextPrimary
+import com.reading.my.ui.theme.TextSecondary
 import com.reading.my.ui.screens.home.HomeScreen
 import com.reading.my.ui.screens.bookstore.BookstoreScreen
 import com.reading.my.ui.screens.bookshelf.BookshelfScreen
@@ -199,7 +215,7 @@ fun MainScreen(
     }
 }
 
-// ==================== 底部导航栏 ====================
+// ==================== 底部导航栏（参考"我的"页面样式：圆角+毛玻璃+FILL图标）====================
 
 @Composable
 private fun BottomNavigationBar(
@@ -208,44 +224,81 @@ private fun BottomNavigationBar(
     userAvatarUrl: String?,
     onItemSelected: (String) -> Unit
 ) {
-    NavigationBar(
-        containerColor = Color.White,
-        tonalElevation = 8.dp
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .navigationBarsPadding(),
+        shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+        color = Color.White.copy(alpha = 0.85f),
+        shadowElevation = 12.dp,
     ) {
-        items.forEach { item ->
-            val isProfileItem = item is BottomNavItem.Profile
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 8.dp, vertical = 6.dp),
+            horizontalArrangement = Arrangement.SpaceEvenly,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            items.forEach { item ->
+                val isSelected = selectedRoute == item.route
+                val isProfileItem = item is BottomNavItem.Profile
 
-            NavigationBarItem(
-                icon = {
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clickable { onItemSelected(item.route) }
+                        .padding(vertical = 6.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(2.dp)
+                ) {
+                    // 图标
                     if (isProfileItem && !userAvatarUrl.isNullOrBlank()) {
-                        android.util.Log.d("AvatarRender", "MainScreen nav: userAvatarUrl=${userAvatarUrl.take(80)}")
-                        ProfileAvatarPlaceholder(username = "我")
+                        // "我的"有头像时显示圆形头像
+                        Box(
+                            modifier = Modifier
+                                .size(28.dp)
+                                .clip(CircleShape)
+                                .background(PrimaryOrange.copy(alpha = 0.15f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "我",
+                                color = PrimaryOrange,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
                     } else {
                         Icon(
-                            imageVector = item.iconVector(),
+                            imageVector = if (isSelected) item.iconVectorFilled() else item.iconVectorOutlined(),
                             contentDescription = item.title,
-                            tint = if (selectedRoute == item.route) PrimaryOrange
-                            else Color.Gray.copy(alpha = 0.6f)
+                            tint = if (isSelected) PrimaryOrange else TextSecondary.copy(alpha = 0.6f),
+                            modifier = Modifier.size(26.dp)
                         )
                     }
-                },
-                label = {
+                    // 标签文字
                     Text(
                         text = item.title,
                         fontSize = 11.sp,
-                        color = if (selectedRoute == item.route) PrimaryOrange
-                        else Color.Gray.copy(alpha = 0.6f),
-                        fontWeight = if (selectedRoute == item.route) FontWeight.Medium else FontWeight.Normal
+                        fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
+                        color = if (isSelected) PrimaryOrange else TextSecondary.copy(alpha = 0.6f)
                     )
-                },
-                selected = selectedRoute == item.route,
-                onClick = { onItemSelected(item.route) }
-            )
+                }
+            }
         }
     }
 }
 
-private fun BottomNavItem.iconVector(): ImageVector = when (this) {
+/** BottomNavItem 的描边图标（未选中态） */
+private fun BottomNavItem.iconVectorOutlined(): ImageVector = when (this) {
+    is BottomNavItem.Bookshelf -> Icons.Outlined.MenuBook
+    is BottomNavItem.Bookstore -> Icons.Outlined.Explore
+    is BottomNavItem.Community -> Icons.Outlined.Groups
+    is BottomNavItem.Profile -> Icons.Outlined.Person
+}
+
+/** BottomNavItem 的实心图标（选中态） */
+private fun BottomNavItem.iconVectorFilled(): ImageVector = when (this) {
     is BottomNavItem.Bookshelf -> Icons.AutoMirrored.Filled.LibraryBooks
     is BottomNavItem.Bookstore -> Icons.Default.Search
     is BottomNavItem.Community -> Icons.Default.Groups
