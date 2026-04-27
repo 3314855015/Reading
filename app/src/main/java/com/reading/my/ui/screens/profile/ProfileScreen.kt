@@ -17,9 +17,11 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import coil.compose.AsyncImage
 import com.reading.my.ui.theme.*
 
 @Composable
@@ -113,12 +115,11 @@ private fun UserInfoCard(
                 contentAlignment = Alignment.Center
             ) {
                 if (!avatarUrl.isNullOrBlank()) {
-                    // 后续替换为 Coil AsyncImage
-                    Text(
-                        text = username.firstOrNull()?.uppercase() ?: "?",
-                        fontSize = 28.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = PrimaryOrange
+                    AsyncImage(
+                        model = avatarUrl,
+                        contentDescription = "用户头像",
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
                     )
                 } else {
                     Text(

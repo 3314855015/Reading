@@ -17,9 +17,11 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import coil.compose.AsyncImage
 import com.reading.my.ui.theme.*
 
 /**
@@ -167,13 +169,21 @@ fun AvatarView(username: String, avatarUrl: String?, size: Int) {
             .border(1.5.dp, PrimaryOrange.copy(alpha = 0.2f), CircleShape),
         contentAlignment = Alignment.Center
     ) {
-        // TODO: [头像] 后续用 Coil AsyncImage 加载真实头像 URL
-        Text(
-            text = username.firstOrNull()?.uppercase() ?: "?",
-            fontSize = (size * 0.4f).sp,
-            fontWeight = FontWeight.Bold,
-            color = PrimaryOrange
-        )
+        if (!avatarUrl.isNullOrBlank()) {
+            AsyncImage(
+                model = avatarUrl,
+                contentDescription = "用户头像",
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
+            )
+        } else {
+            Text(
+                text = username.firstOrNull()?.uppercase() ?: "?",
+                fontSize = (size * 0.4f).sp,
+                fontWeight = FontWeight.Bold,
+                color = PrimaryOrange
+            )
+        }
     }
 }
 

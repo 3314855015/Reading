@@ -64,9 +64,10 @@ fun EditProfileScreen(
 
     // ── 头像裁剪页（全屏覆盖）───
     if (uiState.showAvatarCrop && uiState.pendingAvatarUri != null) {
+        val ctx = LocalContext.current
         AvatarCropScreen(
             imageUri = uiState.pendingAvatarUri!!,
-            onConfirm = { base64 -> viewModel.onAvatarCropped(base64) },
+            onConfirm = { base64 -> viewModel.onAvatarCropped(ctx, base64) },
             onDismiss = { viewModel.dismissAvatarCrop() }
         )
         return
@@ -85,6 +86,7 @@ fun EditProfileScreen(
                 .background(Color.White)
                 .padding(horizontal = 4.dp, vertical = 4.dp)
         ) {
+            val ctx = LocalContext.current
             IconButton(onClick = onBack, modifier = Modifier.align(Alignment.CenterStart)) {
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回", tint = TextPrimary)
             }
@@ -96,7 +98,7 @@ fun EditProfileScreen(
                 modifier = Modifier.align(Alignment.Center)
             )
             TextButton(
-                onClick = { viewModel.saveAll(onBack) },
+                onClick = { viewModel.saveAll(ctx, onBack) },
                 modifier = Modifier.align(Alignment.CenterEnd),
                 enabled = uiState.hasChanges && !uiState.isLoading
             ) {
@@ -137,6 +139,7 @@ fun EditProfileScreen(
                     val displayUrl = previewUri ?: uiState.avatarUrl
 
                     if (!displayUrl.isNullOrBlank()) {
+                        android.util.Log.d("AvatarRender", "EditProfileScreen displayUrl: ${displayUrl.take(80)}")
                         AsyncImage(
                             model = displayUrl,
                             contentDescription = "头像预览",

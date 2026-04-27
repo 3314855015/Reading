@@ -2,6 +2,7 @@ package com.reading.my.ui.screens.profile
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.reading.my.data.local.ImageFileHelper
 import com.reading.my.data.local.UserSessionManager
 import com.reading.my.data.network.ApiService
 import com.reading.my.data.network.model.UpdateAvatarRequest
@@ -65,15 +66,50 @@ class EditProfileViewModel @Inject constructor(
     }
 
     /**
-     * 头像裁剪确认回调 — 收到 Base64 数据，标记待上传
+     * 头像裁剪确认回调 — 立即保存本地 + 异步推送服务器
+     *
+     * 乐观更新策略：点击"使用"后立即写入 UserSessionManager，
+     * 所有观察 sessionInfoFlow 的页面（我的/主页/资料）即时看到新头像。
+     * 后台异步推送到服务器，成功后用规范 URL 替换临时数据。
      */
-    fun onAvatarCropped(base64: String) {
+    fun onAvatarCropped(context: android.content.Context, base64: String) {
+        // ── 1. Base64 → 本地文件 → file:// URI ──
+        val localFileUri = ImageFileHelper.saveAvatarFromBase64(context, base64)
+        if (localFileUri == null) {
+            android.util.Log.e("AvatarSave", "保存头像文件失败")
+            return
+        }
+
+        // ── 2. 立即保存本地（不阻塞 UI）──
+        viewModelScope.launch {
+            sessionManager.updateAvatar(localFileUri)
+            android.util.Log.d("AvatarSave", "sessionManager.updateAvatar completed, uri=$localFileUri")
+        }
+
+        // ── 3. 更新 UI 状态（关闭裁剪页）──
         _uiState.update {
             it.copy(
-                pendingAvatarBase64 = base64,
+                avatarUrl = localFileUri,
+                pendingAvatarUri = null,
+                pendingAvatarBase64 = null,
                 showAvatarCrop = false,
-                hasChanges = true
+                hasChanges = false,
+                errorMessage = null
             )
+        }
+
+        // ── 3. 异步推送到服务器（后台静默执行）──
+        viewModelScope.launch {
+            try {
+                val resp = apiService.updateAvatar(UpdateAvatarRequest(base64))
+                if (resp.isSuccess()) {
+                    val serverUrl = resp.data?.avatar?.takeIf { it.isNotBlank() } ?: localFileUri
+                    sessionManager.updateAvatar(serverUrl)
+                    _uiState.update { it.copy(avatarUrl = serverUrl) }
+                }
+            } catch (_: Exception) {
+                // 静默失败：本地已有新头像，下次启动时可重试同步
+            }
         }
     }
 
@@ -117,18 +153,19 @@ class EditProfileViewModel @Inject constructor(
      *   3. 成功：用服务器返回的规范 URL 替换本地的临时数据
      *   4. 失败：保留本地数据（用户可正常使用），提示可稍后重试
      */
-    fun saveAll(onSuccess: () -> Unit) {
+    fun saveAll(context: android.content.Context, onSuccess: () -> Unit) {
         val pendingBase64 = _uiState.value.pendingAvatarBase64 ?: run { onSuccess(); return }
 
-        val localTempUrl = "data:image/jpeg;base64,$pendingBase64"
+        val localFileUri = com.reading.my.data.local.ImageFileHelper.saveAvatarFromBase64(context, pendingBase64)
+            ?: run { onSuccess(); return }
 
         viewModelScope.launch {
             // ── 第一步：立即保存本地（乐观更新）──
-            sessionManager.updateAvatar(localTempUrl)
+            sessionManager.updateAvatar(localFileUri)
 
             _uiState.update {
                 it.copy(
-                    avatarUrl = localTempUrl,
+                    avatarUrl = localFileUri,
                     pendingAvatarUri = null,
                     pendingAvatarBase64 = null,
                     hasChanges = false,
@@ -141,7 +178,7 @@ class EditProfileViewModel @Inject constructor(
             try {
                 val resp = apiService.updateAvatar(UpdateAvatarRequest(pendingBase64))
                 if (resp.isSuccess()) {
-                    val serverUrl = resp.data?.avatar?.takeIf { it.isNotBlank() } ?: localTempUrl
+                    val serverUrl = resp.data?.avatar?.takeIf { it.isNotBlank() } ?: localFileUri
                     sessionManager.updateAvatar(serverUrl)
                     _uiState.update { it.copy(avatarUrl = serverUrl) }
                 } else {

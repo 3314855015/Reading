@@ -210,8 +210,9 @@ class BookRepositoryImpl @Inject constructor(
 
     override suspend fun updateBookCover(bookId: Long, coverPath: String) {
         val entity = localBookDao.getBookById(bookId) ?: return
+        android.util.Log.d(TAG, "updateBookCover: bookId=$bookId, coverPath prefix=${coverPath.take(80)}")
         localBookDao.updateBook(entity.copy(coverPath = coverPath))
-        Log.d(TAG, "已更新书籍封面: bookId=$bookId, coverPath=$coverPath")
+        android.util.Log.d(TAG, "updateBookCover: DB write completed")
     }
 
     // ==================== Entity ↔ Domain 映射 ====================

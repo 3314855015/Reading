@@ -162,7 +162,9 @@ class UserSessionManager @Inject constructor(
      * 更新用户头像
      */
     suspend fun updateAvatar(avatarUrl: String) {
+        android.util.Log.d(TAG, "updateAvatar called, url prefix=${avatarUrl.take(80)}, length=${avatarUrl.length}")
         dataStore.edit { it[KEY_AVATAR] = avatarUrl }
+        android.util.Log.d(TAG, "updateAvatar written to DataStore")
     }
 
     /**

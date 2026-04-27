@@ -28,6 +28,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -58,9 +59,10 @@ fun BookDetailScreen(
     ) { granted -> if (granted) imagePickerLauncher.launch("image/*") }
 
     if (uiState.showCoverCrop && uiState.pendingCoverUri != null) {
+        val ctx = LocalContext.current
         CoverCropScreen(
             imageUri = uiState.pendingCoverUri!!,
-            onConfirm = { viewModel.saveCover(it) },
+            onConfirm = { viewModel.saveCover(ctx, it) },
             onDismiss = { viewModel.dismissCoverCrop() }
         )
         return
@@ -280,6 +282,7 @@ private fun BookInfoSection(
                     contentAlignment = Alignment.Center
                 ) {
                     if (!userAvatarUri.isNullOrBlank()) {
+                        android.util.Log.d("AvatarRender", "BookDetailScreen userAvatarUri: ${userAvatarUri.take(80)}")
                         AsyncImage(
                             model = userAvatarUri,
                             contentDescription = "头像",
@@ -318,6 +321,7 @@ private fun BookInfoSection(
             contentAlignment = Alignment.Center
         ) {
             if (!book.coverPath.isNullOrBlank()) {
+                android.util.Log.d("CoverRender", "AsyncImage model: ${book.coverPath.take(80)}, isBlank=${book.coverPath.isBlank()}")
                 AsyncImage(
                     model = book.coverPath,
                     contentDescription = "书籍封面",

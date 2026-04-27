@@ -218,6 +218,7 @@ private fun BottomNavigationBar(
             NavigationBarItem(
                 icon = {
                     if (isProfileItem && !userAvatarUrl.isNullOrBlank()) {
+                        android.util.Log.d("AvatarRender", "MainScreen nav: userAvatarUrl=${userAvatarUrl.take(80)}")
                         ProfileAvatarPlaceholder(username = "我")
                     } else {
                         Icon(

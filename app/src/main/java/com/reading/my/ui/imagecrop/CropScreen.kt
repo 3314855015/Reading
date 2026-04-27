@@ -36,6 +36,9 @@ import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
 import java.io.InputStream
 
+// 注意：系统返回手势需要 BackHandler 拦截，否则 showAvatarCrop 状态不会被重置
+import androidx.activity.compose.BackHandler
+
 /**
  * 通用图片裁剪页（共享核心组件）
  *
@@ -110,6 +113,8 @@ fun CropScreen(
             .statusBarsPadding()
             .navigationBarsPadding()
     ) {
+        // ── 拦截系统返回手势，确保状态正确重置 ──
+        BackHandler { onDismiss() }
         // ── 标题栏 ────────────────────
         Row(
             modifier = Modifier
@@ -295,4 +300,6 @@ suspend fun cropAndConvertToBase64(
     } catch (_: Exception) {
         null
     }
+}.also { result ->
+    Log.d("CropScreen", "cropAndConvertToBase64 result: ${result?.take(80)}... length=${result?.length ?: 0}")
 }

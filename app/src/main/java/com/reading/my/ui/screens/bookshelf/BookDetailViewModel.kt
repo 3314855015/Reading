@@ -77,13 +77,16 @@ class BookDetailViewModel @Inject constructor(
     }
 
     /** 裁剪完成，保存封面到本地 DB */
-    fun saveCover(croppedUri: String) {
-        val book = _uiState.value.book ?: return
+    fun saveCover(context: android.content.Context, base64: String) {
+        val book = _uiState.value.book ?: run { android.util.Log.w("CoverSave", "book is null!"); return }
         viewModelScope.launch {
-            bookRepository.updateBookCover(book.id, croppedUri)
+            // Base64 → 本地文件 → file:// URI（Coil 可靠加载本地文件）
+            val coverUri = com.reading.my.data.local.ImageFileHelper.saveCoverFromBase64(context, base64, book.id)
+                ?: run { android.util.Log.e("CoverSave", "保存封面文件失败"); return@launch }
+            bookRepository.updateBookCover(book.id, coverUri)
             _uiState.update {
                 it.copy(
-                    book = book.copy(coverPath = croppedUri),
+                    book = book.copy(coverPath = coverUri),
                     showCoverCrop = false,
                     pendingCoverUri = null
                 )
