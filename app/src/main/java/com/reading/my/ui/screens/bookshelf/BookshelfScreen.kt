@@ -115,13 +115,16 @@ fun BookshelfScreen(
 
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
-    // 整体可滚动布局
+    // 整体一体滚动布局：头部 + 编辑推荐 + Tab + 内容区一起滚动
+    val scrollState = rememberScrollState()
+
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFFfcf9f8)) // 奶油色纸质背景
+            .background(Color(0xFFfcf9f8))
+            .verticalScroll(scrollState)
     ) {
-        // ===== 1. 沉浸式头部区域 =====
+        // ===== 1. 沉浸式头部区域（含编辑推荐卡片） =====
         BookshelfImmersiveHeader(
             onImportDocx = {
                 filePicker.launch(arrayOf("application/vnd.openxmlformats-officedocument.wordprocessingml.document"))
@@ -129,7 +132,7 @@ fun BookshelfScreen(
             onClearCache = { viewModel.clearAllBooks() }
         )
 
-        // ===== 2. 编辑推荐卡片 =====
+        // ===== 2. 编辑推荐卡片（紧跟头部下方） =====
         // TODO: 推荐书籍数据加载 - 当前使用占位内容
         EditorChoiceCard()
 
@@ -140,71 +143,55 @@ fun BookshelfScreen(
             onTabSelected = { selectedTab = it }
         )
 
-        // ===== 4. 主内容区（可滚动） =====
-        Column(
-            modifier = Modifier
-                .weight(1f)
-                .verticalScroll(rememberScrollState())
-        ) {
-            when {
-                uiState.isLoading && uiState.books.isEmpty() -> {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(300.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        CircularProgressIndicator(color = PrimaryOrange)
-                    }
-                }
-                uiState.books.isEmpty() -> {
-                    EmptyShelfView(onImport = {
-                        filePicker.launch(arrayOf("application/vnd.openxmlformats-officedocument.wordprocessingml.document"))
-                    })
-                }
-                else -> {
-                    // 3列书籍网格
-                    ShelfBookGrid(
-                        books = uiState.books,
-                        onBookClick = { book ->
-                            if (book.id > 0L) onNavigateToDetail(book.id)
-                        },
-                        onAddNew = {
-                            filePicker.launch(arrayOf("application/vnd.openxmlformats-officedocument.wordprocessingml.document"))
-                        }
-                    )
+        // ===== 4. 主内容区（书籍网格，随整体滚动） =====
+        when {
+            uiState.isLoading && uiState.books.isEmpty() -> {
+                Box(
+                    modifier = Modifier.fillMaxWidth().height(300.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator(color = PrimaryOrange)
                 }
             }
-
-            // ===== 5. 名言引用区块 =====
-            QuoteBlock()
-
-            Spacer(modifier = Modifier.height(24.dp))
+            uiState.books.isEmpty() -> {
+                EmptyShelfView(onImport = {
+                    filePicker.launch(arrayOf("application/vnd.openxmlformats-officedocument.wordprocessingml.document"))
+                })
+            }
+            else -> {
+                ShelfBookGrid(
+                    books = uiState.books,
+                    onBookClick = { book ->
+                        if (book.id > 0L) onNavigateToDetail(book.id)
+                    },
+                    onAddNew = {
+                        filePicker.launch(arrayOf("application/vnd.openxmlformats-officedocument.wordprocessingml.document"))
+                    }
+                )
+            }
         }
 
-        // 导入状态提示
+        // 导入状态提示（在底部显示）
         uiState.importMessage?.let { msg ->
             Text(
-                text = msg,
-                fontSize = 12.sp,
-                color = PrimaryOrange,
-                modifier = Modifier.padding(horizontal = 24.dp)
+                text = msg, fontSize = 12.sp, color = PrimaryOrange,
+                modifier = Modifier.padding(horizontal = 24.dp).padding(bottom = 4.dp)
             )
         }
         if (uiState.isImporting) {
             Row(
-                modifier = Modifier.padding(horizontal = 24.dp),
+                modifier = Modifier.padding(horizontal = 24.dp).padding(bottom = 8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 CircularProgressIndicator(
-                    modifier = Modifier.size(14.dp),
-                    color = PrimaryOrange,
-                    strokeWidth = 2.dp
+                    modifier = Modifier.size(14.dp), color = PrimaryOrange, strokeWidth = 2.dp
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(text = "正在解析文件...", fontSize = 12.sp, color = TextHint)
             }
         }
+
+        Spacer(modifier = Modifier.height(24.dp))
     }
 }
 
@@ -639,45 +626,5 @@ private fun EmptyShelfView(onImport: () -> Unit) {
                 .clickable { onImport() }
                 .padding(horizontal = 28.dp, vertical = 12.dp)
         )
-    }
-}
-
-// ==================== 6. 名言引用区块 ====================
-
-@Composable
-private fun QuoteBlock() {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 24.dp, vertical = 20.dp)
-            .clip(RoundedCornerShape(topEnd = 16.dp, bottomEnd = 16.dp))
-            .background(Color(0xFFa03b00).copy(alpha = 0.05f))
-            .padding(start = 20.dp, top = 20.dp, end = 20.dp, bottom = 20.dp)
-    ) {
-        // 左侧橙色竖线装饰
-        Box(
-            modifier = Modifier
-                .width(4.dp)
-                .matchParentSize()
-                .background(Color(0xFFa03b00))
-                .offset(x = (-20).dp)
-        )
-
-        Column {
-            Text(
-                text = "\"一个没有书的房间就像没有灵魂的身体。\"",
-                fontSize = 15.sp,
-                fontStyle = FontStyle.Italic,
-                color = TextSecondary,
-                lineHeight = 22.sp
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = "— 西塞罗",
-                fontSize = 13.sp,
-                fontWeight = FontWeight.Bold,
-                color = PrimaryOrange
-            )
-        }
     }
 }
