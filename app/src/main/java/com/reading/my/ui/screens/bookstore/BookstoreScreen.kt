@@ -180,15 +180,14 @@ private fun BookstoreImmersiveHeader(
                 Row(
                     modifier = Modifier
                         .clip(CircleShape)
-                        .background(Color.White)
+                        .background(Color.White.copy(0.1f))
                         .padding(horizontal = 8.dp, vertical = 4.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Box(
                         modifier = Modifier
                             .size(24.dp)
-                            .clip(CircleShape)
-                            .background(Color(0xFFFFE0CC)),
+                            .clip(CircleShape),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(

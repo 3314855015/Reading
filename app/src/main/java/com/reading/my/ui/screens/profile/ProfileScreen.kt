@@ -18,6 +18,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.outlined.AutoAwesome
@@ -25,7 +27,6 @@ import androidx.compose.material.icons.outlined.CalendarToday
 import androidx.compose.material.icons.outlined.ChatBubble
 import androidx.compose.material.icons.outlined.ConfirmationNumber
 import androidx.compose.material.icons.outlined.DarkMode
-import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.EventAvailable
 import androidx.compose.material.icons.outlined.FormatListBulleted
 import androidx.compose.material.icons.outlined.History
@@ -45,6 +46,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -55,9 +57,12 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.layout.ContentScale
 import androidx.hilt.navigation.compose.hiltViewModel
 import coil.compose.AsyncImage
 import com.reading.my.ui.theme.*
+import com.reading.my.R
 
 /**
  * 我的页面（V2 — UI重构版，参考 Profile HTML设计稿）
@@ -139,22 +144,34 @@ private fun ProfileHeaderSection(
     Box(
         modifier = Modifier
             .fillMaxWidth()
+            .heightIn(max = 240.dp) // 限制头部最大高度，防止背景图撑开
+            .clip(RoundedCornerShape(bottomStart = 20.dp, bottomEnd = 20.dp))
             .background(Brush.radialGradient(
                 colors = listOf(Color(0xFF4a3728), Color(0xFF1b1c1c))
             ))
     ) {
-        Column(modifier = Modifier.fillMaxWidth()) {
-            // TODO: 头部模糊背景图加载 - 需要网络图片或本地资源
-            // 参考设计: 氛围感图片 + opacity-0.3 + blur-2xl + scale-110
-            // 当前使用纯渐变替代
+        // ===== 背景图（模糊 + 暗化遮罩） =====
+        Image(
+            painter = painterResource(id = R.drawable.backround),
+            contentDescription = null,
+            modifier = Modifier
+                .fillMaxSize()
+                .blur(28.dp),
+            contentScale = ContentScale.Crop
+        )
+        // 暗色遮罩层
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.6f))
+        )
 
+        Column(modifier = Modifier.fillMaxWidth()) {
             Spacer(modifier = Modifier.height(32.dp))
 
             // 右上角签到按钮
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 24.dp),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp),
                 horizontalArrangement = Arrangement.End
             ) {
                 Row(
@@ -167,100 +184,74 @@ private fun ProfileHeaderSection(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    Icon(
-                        imageVector = Icons.Outlined.CalendarToday,
-                        contentDescription = null,
-                        tint = Color.White,
-                        modifier = Modifier.size(14.dp)
-                    )
-                    Text(
-                        text = "签到",
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White
-                    )
+                    Icon(imageVector = Icons.Outlined.CalendarToday, contentDescription = null,
+                        tint = Color.White, modifier = Modifier.size(14.dp))
+                    Text(text = "签到", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color.White)
                 }
             }
 
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(20.dp))
 
-            // 用户信息卡片（向上浮动效果）
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 24.dp)
-            ) {
-                // 白色圆角卡片
+            // ===== 用户信息卡片（头像在卡片外部定位，不被裁剪） =====
+            Box(modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp)) {
+                // 毛玻璃圆角卡片（透出模糊背景图）
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(32.dp))
-                        .background(Color.White.copy(alpha = 0.95f))
-                        .border(1.dp, Color.White.copy(alpha = 0.20f), RoundedCornerShape(32.dp))
+                        .clip(RoundedCornerShape(28.dp))
+                        .background(Color(0xFFFFFFFF).copy(alpha = 0.0f)) // 毛玻璃暖色
+//                        .border(1.dp, Color.White.copy(alpha = 0.30f), RoundedCornerShape(28.dp))
                         .clickable(onClick = onClickUserCard)
-                        .padding(top = 28.dp, bottom = 20.dp, start = 24.dp, end = 24.dp)
-                        .padding(bottom = 4.dp), // 微调底部间距
+                        .padding(top = 60.dp, bottom = 16.dp, start = 24.dp, end = 24.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    // 头像（悬浮在顶部边缘）
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    // 昵称
+                    Text(text = username.ifBlank { "未设置昵称" },
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.Serif,
+                        color = Color(0xFFAFB4B4),
+                        letterSpacing = (-0.5).sp
+                    )
+
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    // 简介
+                    Text(
+                        text = bio?.takeIf { it.isNotBlank() }
+                            ?: "资深读者与策展人。热爱在静谧的午后探索文字的奥秘。",
+                        fontSize = 12.sp, fontWeight = FontWeight.Medium,
+                        color = Color(0xFF999999), maxLines = 2,
+                        overflow = TextOverflow.Ellipsis, lineHeight = 17.sp,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.padding(horizontal = 12.dp)
+                    )
+                }
+
+                // 头像（绝对定位在卡片顶部中央，超出卡片边界，不被裁剪）
+                Box(
+                    modifier = Modifier.align(Alignment.TopCenter).offset(y = (-36).dp),
+                ) {
                     Box(
-                        modifier = Modifier
-                            .size(80.dp)
-                            .offset(y = (-52).dp) // 向上偏移悬浮
-                            .clip(CircleShape)
+                        modifier = Modifier.size(72.dp).clip(CircleShape)
                             .background(Color.White)
                             .border(2.dp, Color(0xFFf0ece9), CircleShape),
                         contentAlignment = Alignment.Center
                     ) {
                         if (!avatarUrl.isNullOrBlank()) {
-                            AsyncImage(
-                                model = avatarUrl,
-                                contentDescription = "用户头像",
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .clip(CircleShape)
-                            )
+                            AsyncImage(model = avatarUrl, contentDescription = "用户头像",
+                                modifier = Modifier.fillMaxSize().clip(CircleShape))
                         } else {
-                            Text(
-                                text = username.firstOrNull()?.uppercase() ?: "?",
-                                fontSize = 28.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = PrimaryOrange
-                            )
+                            Text(text = username.firstOrNull()?.uppercase() ?: "?",
+                                fontSize = 26.sp, fontWeight = FontWeight.Bold, color = PrimaryOrange)
                         }
                     }
-
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    // 昵称
-                    Text(
-                        text = username.ifBlank { "未设置昵称" },
-                        fontSize = 22.sp,
-                        fontWeight = FontWeight.Bold,
-                        fontFamily = FontFamily.Serif,
-                        color = Color(0xFF1b1c1c),
-                        letterSpacing = (-0.5).sp
-                    )
-
-                    Spacer(modifier = Modifier.height(6.dp))
-
-                    // 简介
-                    Text(
-                        text = bio?.takeIf { it.isNotBlank() }
-                            ?: "资深读者与策展人。热爱在静谧的午后探索文字的奥秘，寻找心灵的避风港。",
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = Color(0xFF999999),
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                        lineHeight = 17.sp,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.padding(horizontal = 16.dp)
-                    )
                 }
             }
 
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(8.dp)) // 卡片与功能网格间的紧凑过渡
         }
     }
 }
