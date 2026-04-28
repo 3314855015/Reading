@@ -92,11 +92,11 @@ fun ProfileScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
-    // 整体可滚动布局
+    // 整体可滚动布局（与书架页一致的深色底 + 模糊头图结构）
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFFfcf9f8)) // 奶油色纸质背景
+            .background(Color(0xFFfcf9f8))
             .verticalScroll(rememberScrollState())
     ) {
         // ===== 1. 深色渐变头部 + 用户信息卡 =====
@@ -144,11 +144,7 @@ private fun ProfileHeaderSection(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .heightIn(max = 240.dp) // 限制头部最大高度，防止背景图撑开
-            .clip(RoundedCornerShape(bottomStart = 20.dp, bottomEnd = 20.dp))
-            .background(Brush.radialGradient(
-                colors = listOf(Color(0xFF4a3728), Color(0xFF1b1c1c))
-            ))
+            .heightIn(max = 240.dp)
     ) {
         // ===== 背景图（模糊 + 暗化遮罩） =====
         Image(
@@ -156,7 +152,7 @@ private fun ProfileHeaderSection(
             contentDescription = null,
             modifier = Modifier
                 .fillMaxSize()
-                .blur(28.dp),
+                .blur(64.dp),
             contentScale = ContentScale.Crop
         )
         // 暗色遮罩层
@@ -356,7 +352,7 @@ private fun FunctionIconCard(
             modifier = Modifier
                 .size(56.dp)
                 .clip(RoundedCornerShape(18.dp))
-                .background(Color.White)
+                .background(Color(0xfcf9f8))
                 .border(1.dp, Color(0xFFf5f0ed), RoundedCornerShape(18.dp)),
             contentAlignment = Alignment.Center
         ) {
@@ -391,16 +387,9 @@ private fun SettingsSection(
             .fillMaxWidth()
             .padding(horizontal = 24.dp)
     ) {
-        // 大圆角白色容器
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(24.dp))
-                .background(Color.White)
-                .border(1.dp, Color(0xFFF5f0ed), RoundedCornerShape(24.dp))
-        ) {
-            // 夜间模式
-            SettingRowWithSwitch(
+        // 直接铺满剩余空间，无悬浮卡片
+        // 夜间模式
+        SettingRowWithSwitch(
                 icon = Icons.Outlined.DarkMode,
                 title = "夜间模式",
                 checked = isDarkMode,
@@ -437,7 +426,6 @@ private fun SettingsSection(
                 value = null,
                 onClick = { /* TODO: 打开关于页面 */ }
             )
-        }
 
         Spacer(modifier = Modifier.height(24.dp))
     }

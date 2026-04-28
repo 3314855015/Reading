@@ -135,7 +135,7 @@ private fun BookstoreImmersiveHeader(
             contentDescription = null,
             modifier = Modifier
                 .fillMaxSize()
-                .blur(28.dp), // 强模糊去细节
+                .blur(16.dp), // 强模糊去细节
             contentScale = ContentScale.Crop
         )
         // 暗色遮罩层（确保文字可读）

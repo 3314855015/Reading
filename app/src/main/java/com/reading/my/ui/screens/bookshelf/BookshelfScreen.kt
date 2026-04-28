@@ -156,7 +156,7 @@ fun BookshelfScreen(
 
             // 头部内容叠加在背景之上
             Column(modifier = Modifier.fillMaxWidth()) {
-                Spacer(modifier = Modifier.height(32.dp)) // 状态栏占位
+                Spacer(modifier = Modifier.height(12.dp)) // 状态栏占位
 
                 // 标题栏 + 操作按钮
                 Row(
