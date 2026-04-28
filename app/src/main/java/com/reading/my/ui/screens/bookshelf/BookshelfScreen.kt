@@ -3,6 +3,7 @@ package com.reading.my.ui.screens.bookshelf
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -52,11 +53,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -65,6 +69,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.reading.my.R
 import com.reading.my.domain.model.Book
 import com.reading.my.ui.theme.*
 
@@ -99,6 +104,7 @@ fun BookshelfScreen(
     val context = LocalContext.current
     var selectedTagIndex by remember { mutableIntStateOf(0) }
     var selectedTab by remember { mutableIntStateOf(0) } // 0=书架, 1=最近更新, 2=本地上传
+    var showMenu by remember { mutableStateOf(false) }
 
     // ===== SAF 文件选择器（docx 格式过滤） =====
     val filePicker = rememberLauncherForActivityResult(
@@ -116,173 +122,163 @@ fun BookshelfScreen(
 
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
-    // 整体一体滚动布局：头部 + 编辑推荐 + Tab + 内容区一起滚动
+    // 整体一体滚动布局（参考 BookstoreScreen 的结构）
     val scrollState = rememberScrollState()
 
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFFfcf9f8))
+            .background(Color(0xFF1b1c1c))
             .verticalScroll(scrollState)
     ) {
-        // ===== 1. 沉浸式头部区域（含编辑推荐卡片） =====
-        BookshelfImmersiveHeader(
-            onImportDocx = {
-                filePicker.launch(arrayOf("application/vnd.openxmlformats-officedocument.wordprocessingml.document"))
-            },
-            onClearCache = { viewModel.clearAllBooks() }
-        )
-
-        // ===== 2. Tab药丸切换栏 =====
-        ShelfPillTabs(
-            selectedTab = selectedTab,
-            tabs = listOf("书架", "最近更新", "本地上传"),
-            onTabSelected = { selectedTab = it }
-        )
-
-        // ===== 4. 主内容区（书籍网格，随整体滚动） =====
-        when {
-            uiState.isLoading && uiState.books.isEmpty() -> {
-                Box(
-                    modifier = Modifier.fillMaxWidth().height(300.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    CircularProgressIndicator(color = PrimaryOrange)
-                }
-            }
-            uiState.books.isEmpty() -> {
-                EmptyShelfView(onImport = {
-                    filePicker.launch(arrayOf("application/vnd.openxmlformats-officedocument.wordprocessingml.document"))
-                })
-            }
-            else -> {
-                ShelfBookGrid(
-                    books = uiState.books,
-                    onBookClick = { book ->
-                        if (book.id > 0L) onNavigateToDetail(book.id)
-                    },
-                    onAddNew = {
-                        filePicker.launch(arrayOf("application/vnd.openxmlformats-officedocument.wordprocessingml.document"))
-                    }
-                )
-            }
-        }
-
-        // 导入状态提示（在底部显示）
-        uiState.importMessage?.let { msg ->
-            Text(
-                text = msg, fontSize = 12.sp, color = PrimaryOrange,
-                modifier = Modifier.padding(horizontal = 24.dp).padding(bottom = 4.dp)
-            )
-        }
-        if (uiState.isImporting) {
-            Row(
-                modifier = Modifier.padding(horizontal = 24.dp).padding(bottom = 8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                CircularProgressIndicator(
-                    modifier = Modifier.size(14.dp), color = PrimaryOrange, strokeWidth = 2.dp
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(text = "正在解析文件...", fontSize = 12.sp, color = TextHint)
-            }
-        }
-
-        Spacer(modifier = Modifier.height(24.dp))
-    }
-}
-
-// ==================== 1. 沉浸式头部区域 ====================
-
-/** 深色渐变头部：标题 + 操作按钮 */
-@Composable
-private fun BookshelfImmersiveHeader(
-    onImportDocx: () -> Unit,
-    onClearCache: () -> Unit,
-) {
-    var showMenu by remember { mutableStateOf(false) }
-
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .heightIn(max = 300.dp)
-            .clip(RoundedCornerShape(bottomStart = 20.dp, bottomEnd = 20.dp))
-            .background(
-                Brush.verticalGradient(
-                    colors = listOf(Color(0xFF4a3728), Color(0xFF1b1c1c))
-                )
-            )
-    ) {
-        // TODO: 头部背景图加载 - 需要网络图片或本地资源
-        // 参考设计: 图书馆内部全景图 + blur + opacity 0.3
-        // 当前使用纯渐变替代
-
-        Column(
+        // ===== 沉浸式头部区域（模糊背景图 + 深色遮罩 + 内容）=====
+        Box(
             modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 24.dp, vertical = 16.dp)
+                .fillMaxWidth()
+                .heightIn(max = 260.dp)
+                .clip(RoundedCornerShape(bottomStart = 20.dp, bottomEnd = 20.dp))
         ) {
-            Spacer(modifier = Modifier.height(32.dp)) // 状态栏占位
+            // 背景图（模糊 + Crop填充）
+            Image(
+                painter = painterResource(id = R.drawable.backround),
+                contentDescription = null,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .blur(12.dp),
+                contentScale = ContentScale.Crop
+            )
+            // 暗色遮罩层
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.6f))
+            )
 
-            // 标题行：书架 | 历史 · 下载 · 更多
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "书架",
-                    fontSize = 28.sp,
-                    fontWeight = FontWeight.Bold,
-                    fontFamily = FontFamily.Serif,
-                    color = Color.White
-                )
+            // 头部内容叠加在背景之上
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Spacer(modifier = Modifier.height(32.dp)) // 状态栏占位
 
-                // 右侧操作图标组
+                // 标题栏 + 操作按钮
                 Row(
-                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    HeaderActionIcon(
-                        icon = Icons.Outlined.History,
-                        label = "历史",
-                        onClick = { /* TODO: 跳转阅读历史 */ }
+                    Text(
+                        text = "书架", fontSize = 28.sp, fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.Serif, color = Color.White
                     )
-                    HeaderActionIcon(
-                        icon = Icons.Outlined.Download,
-                        label = "下载",
-                        onClick = { /* TODO: 跳转离线下载管理 */ }
-                    )
-                    Box {
+
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
                         HeaderActionIcon(
-                            icon = Icons.Outlined.MoreHoriz,
-                            label = "更多",
-                            onClick = { showMenu = true }
-                        )
-                        DropdownMenu(
-                            expanded = showMenu,
-                            onDismissRequest = { showMenu = false },
-                            modifier = Modifier.background(Color.White)
-                        ) {
-                            DropdownMenuItem(
-                                text = { Text("导入小说", fontSize = 14.sp) },
-                                onClick = { showMenu = false; onImportDocx() }
-                            )
-                            DropdownMenuItem(
-                                text = { Text("清空缓存", fontSize = 14.sp) },
-                                onClick = { showMenu = false; onClearCache() }
-                            )
+                            icon = Icons.Outlined.History, label = "历史",
+                            onClick = { /* TODO: 跳转阅读历史 */ })
+                        HeaderActionIcon(
+                            icon = Icons.Outlined.Download, label = "下载",
+                            onClick = { /* TODO: 跳转离线下载管理 */ })
+                        Box {
+                            HeaderActionIcon(
+                                icon = Icons.Outlined.MoreHoriz, label = "更多",
+                                onClick = { showMenu = true })
+                            DropdownMenu(
+                                expanded = showMenu, onDismissRequest = { showMenu = false },
+                                modifier = Modifier.background(Color.White)
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text("导入小说", fontSize = 14.sp) },
+                                    onClick = {
+                                        showMenu = false
+                                        filePicker.launch(arrayOf("application/vnd.openxmlformats-officedocument.wordprocessingml.document"))
+                                    })
+                                DropdownMenuItem(
+                                    text = { Text("清空缓存", fontSize = 14.sp) },
+                                    onClick = { showMenu = false; viewModel.clearAllBooks() })
+                            }
                         }
                     }
                 }
+
+                Spacer(modifier = Modifier.height(20.dp))
+
+                // 编辑推荐卡片（在头部区域内）
+                Box(modifier = Modifier.padding(horizontal = 24.dp)) {
+                    EditorChoiceCard()
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
             }
+        }
 
-            Spacer(modifier = Modifier.weight(1f))
-
-            // ===== 编辑推荐卡片（在头部底部） =====
-            EditorChoiceCard()
+        // ===== 圆角米色模块（Tab + 书籍网格）=====
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
+                .background(Color(0xFFfcf9f8)) // 米色纸质背景
+                .padding(horizontal = 24.dp)
+        ) {
+            // Tab 药丸切换栏
+            ShelfPillTabs(
+                selectedTab = selectedTab,
+                tabs = listOf("书架", "最近更新", "本地上传"),
+                onTabSelected = { selectedTab = it }
+            )
 
             Spacer(modifier = Modifier.height(12.dp))
+
+            when {
+                uiState.isLoading && uiState.books.isEmpty() -> {
+                    Box(
+                        modifier = Modifier.fillMaxWidth().height(300.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator(color = PrimaryOrange)
+                    }
+                }
+
+                uiState.books.isEmpty() -> {
+                    EmptyShelfView(onImport = {
+                        filePicker.launch(arrayOf("application/vnd.openxmlformats-officedocument.wordprocessingml.document"))
+                    })
+                }
+
+                else -> {
+                    ShelfBookGrid(
+                        books = uiState.books,
+                        onBookClick = { book ->
+                            if (book.id > 0L) onNavigateToDetail(book.id)
+                        },
+                        onAddNew = {
+                            filePicker.launch(arrayOf("application/vnd.openxmlformats-officedocument.wordprocessingml.document"))
+                        }
+                    )
+                }
+            }
+
+            // 导入状态提示
+            uiState.importMessage?.let { msg ->
+                Text(
+                    text = msg, fontSize = 12.sp, color = PrimaryOrange,
+                    modifier = Modifier.padding(bottom = 4.dp)
+                )
+            }
+            if (uiState.isImporting) {
+                Row(
+                    modifier = Modifier.padding(bottom = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(14.dp), color = PrimaryOrange, strokeWidth = 2.dp
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(text = "正在解析文件...", fontSize = 12.sp, color = TextHint)
+                }
+            }
+
+            Spacer(modifier = Modifier.height(32.dp))
         }
     }
 }
@@ -327,7 +323,7 @@ private fun EditorChoiceCard() {
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(16.dp))
-                .background(Color.White.copy(alpha = 0.92f))
+                .background(Color.White.copy(alpha = 0.0f))
                 .padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -339,10 +335,6 @@ private fun EditorChoiceCard() {
                     .background(Color(0xFFF0ECF5)),
                 contentAlignment = Alignment.Center
             ) {
-                Text(
-                    text = "📖",
-                    fontSize = 28.sp
-                )
             }
 
             Spacer(modifier = Modifier.width(16.dp))
@@ -363,7 +355,7 @@ private fun EditorChoiceCard() {
                     text = "发现你的下一本好书",
                     fontSize = 17.sp,
                     fontWeight = FontWeight.Medium,
-                    color = TextPrimary,
+                    color = Color.White,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -382,17 +374,6 @@ private fun EditorChoiceCard() {
                 Spacer(modifier = Modifier.height(8.dp))
 
                 // 按钮
-                Text(
-                    text = "开始阅读 →",
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = Color.White,
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(20.dp))
-                        .background(PrimaryOrange)
-                        .clickable(enabled = false) { /* TODO: 打开推荐详情 */ }
-                        .padding(horizontal = 16.dp, vertical = 6.dp)
-                )
             }
         }
     }
@@ -410,7 +391,6 @@ private fun ShelfPillTabs(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 24.dp)
             .padding(top = 12.dp),
         horizontalArrangement = Arrangement.Start
     ) {
@@ -451,14 +431,14 @@ private fun ShelfBookGrid(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(top = 16.dp, start = 20.dp, end = 20.dp)
+            .padding(top = 16.dp)
     ) {
         LazyVerticalGrid(
             columns = GridCells.Fixed(3),
             contentPadding = PaddingValues(vertical = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
-            modifier = Modifier.height((((books.size / 3) + 1) * 220).dp) // 估算高度
+            modifier = Modifier.height((((books.size / 3) + 1) * 220 + 220).dp) // 估算高度
         ) {
             items(books, key = { it.id.toString() }) { book ->
                 ModernBookCard(
@@ -506,7 +486,9 @@ private fun ModernBookCard(
                     .fillMaxWidth()
                     .aspectRatio(3f / 4f)
                     .background(coverColor)
-            )
+            ){
+
+            }
         }
 
         Spacer(modifier = Modifier.height(6.dp))
