@@ -33,6 +33,7 @@ import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.MoreHoriz
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.Surface
@@ -132,11 +133,7 @@ fun BookshelfScreen(
             onClearCache = { viewModel.clearAllBooks() }
         )
 
-        // ===== 2. 编辑推荐卡片（紧跟头部下方） =====
-        // TODO: 推荐书籍数据加载 - 当前使用占位内容
-        EditorChoiceCard()
-
-        // ===== 3. Tab药丸切换栏 =====
+        // ===== 2. Tab药丸切换栏 =====
         ShelfPillTabs(
             selectedTab = selectedTab,
             tabs = listOf("书架", "最近更新", "本地上传"),
@@ -208,13 +205,11 @@ private fun BookshelfImmersiveHeader(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(280.dp)
+            .heightIn(max = 300.dp)
+            .clip(RoundedCornerShape(bottomStart = 20.dp, bottomEnd = 20.dp))
             .background(
                 Brush.verticalGradient(
-                    colors = listOf(
-                        Color(0xFF4a3728), // 深棕色顶
-                        Color(0xFF1b1c1c), // 近黑底
-                    )
+                    colors = listOf(Color(0xFF4a3728), Color(0xFF1b1c1c))
                 )
             )
     ) {
@@ -229,7 +224,7 @@ private fun BookshelfImmersiveHeader(
         ) {
             Spacer(modifier = Modifier.height(32.dp)) // 状态栏占位
 
-            // 标题行: 书架 | 历史 · 下载 · 更多
+            // 标题行：书架 | 历史 · 下载 · 更多
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -284,8 +279,10 @@ private fun BookshelfImmersiveHeader(
 
             Spacer(modifier = Modifier.weight(1f))
 
-            // 底部留空给编辑推荐卡片
-            Spacer(modifier = Modifier.height(16.dp))
+            // ===== 编辑推荐卡片（在头部底部） =====
+            EditorChoiceCard()
+
+            Spacer(modifier = Modifier.height(12.dp))
         }
     }
 }
@@ -319,20 +316,18 @@ private fun HeaderActionIcon(
 
 @Composable
 private fun EditorChoiceCard() {
-    // 卡片向上偏移覆盖头部底部
+    // TODO: 编辑推荐数据加载 - 需要从后端获取推荐书籍
+    // 当前展示占位UI
+
+    // 卡片在头部底部，自然显示
     Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 24.dp)
-            .offset(y = (-40).dp)
+        modifier = Modifier.fillMaxWidth()
     ) {
-        // TODO: 编辑推荐数据加载 - 需要从后端获取推荐书籍
-        // 当前展示占位UI
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(16.dp))
-                .background(Color.White.copy(alpha = 0.90f))
+                .background(Color.White.copy(alpha = 0.92f))
                 .padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -412,7 +407,6 @@ private fun ShelfPillTabs(
     tabs: List<String>,
     onTabSelected: (Int) -> Unit,
 ) {
-    // 向下偏移让tab在推荐卡片下方
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -428,17 +422,16 @@ private fun ShelfPillTabs(
                 val isSelected = index == selectedTab
                 Surface(
                     shape = RoundedCornerShape(20.dp),
-                    color = if (isSelected) Color.White.copy(alpha = 0.25f)
-                              else Color.White.copy(alpha = 0.10f),
+                    color = if (isSelected) PrimaryOrange.copy(alpha = 0.15f)
+                              else Color(0xFFE8E4DF),
                     modifier = Modifier.clickable { onTabSelected(index) }
                 ) {
                     Text(
                         text = tab,
                         modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
                         fontSize = 14.sp,
-                        fontWeight = if (isSelected) FontWeight.Medium else FontWeight.Normal,
-                        color = if (isSelected) Color.White else Color.White.copy(alpha = 0.7f),
-                        fontFamily = FontFamily.Default
+                        fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
+                        color = if (isSelected) PrimaryOrange else Color(0xFF666666)
                     )
                 }
             }
