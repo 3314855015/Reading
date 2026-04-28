@@ -46,6 +46,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -155,8 +156,8 @@ fun BookshelfScreen(
             )
 
             // 头部内容叠加在背景之上
-            Column(modifier = Modifier.fillMaxWidth()) {
-                Spacer(modifier = Modifier.height(12.dp)) // 状态栏占位
+            Column(modifier = Modifier.fillMaxWidth().statusBarsPadding()) {
+//                Spacer(modifier = Modifier.height(24.dp)) // 状态栏占位
 
                 // 标题栏 + 操作按钮
                 Row(

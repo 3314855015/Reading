@@ -4,8 +4,8 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material3.Scaffold
 import androidx.compose.ui.Modifier
 import androidx.navigation.compose.rememberNavController
 import com.reading.my.data.local.UserSessionManager
@@ -25,7 +25,8 @@ class MainActivity : ComponentActivity() {
         setContent {
             ReadingTheme {
                 val navController = rememberNavController()
-                Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
+                // 纯容器：各页面自行控制沉浸式状态栏和背景
+                Box(modifier = Modifier.fillMaxSize()) {
                     NavGraph(navController = navController, sessionManager = sessionManager)
                 }
             }

@@ -26,6 +26,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoStories
 import androidx.compose.material.icons.filled.CalendarToday
@@ -145,9 +146,9 @@ private fun BookstoreImmersiveHeader(
                 .background(Color.Black.copy(alpha = 0.6f))
         )
 
-        Column(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.fillMaxWidth().statusBarsPadding()) {
             // 状态栏占位 + 内边距
-            Spacer(modifier = Modifier.height(32.dp))
+            Spacer(modifier = Modifier.height(10.dp))
 
             // --- 顶部分类Tab + AI对话按钮 ---
             Row(

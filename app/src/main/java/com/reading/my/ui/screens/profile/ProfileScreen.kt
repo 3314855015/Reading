@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
@@ -92,41 +93,65 @@ fun ProfileScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
-    // 整体可滚动布局（与书架页一致的深色底 + 模糊头图结构）
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color(0xFFfcf9f8))
-            .verticalScroll(rememberScrollState())
-    ) {
-        // ===== 1. 深色渐变头部 + 用户信息卡 =====
-        ProfileHeaderSection(
-            username = uiState.username,
-            bio = uiState.bio,
-            avatarUrl = uiState.avatarUrl,
-            onClickUserCard = onNavigateToProfile,
-            isDarkMode = uiState.isDarkMode,
-            onDarkModeToggle = { viewModel.toggleDarkMode() }
-        )
+    // 分层布局：底层模糊图延伸至状态栏 + 顶层可滚动内容
+    Box(modifier = Modifier.fillMaxSize()) {
 
-        // ===== 2. 功能网格 (4列 × 2行) =====
-        FunctionGridSection(
-            localCount = uiState.localCount,
-            onBookListClick = onNavigateToBookList,
-            publishCount = uiState.publishCount,
-            onPublishClick = onNavigateToPublish,
-            groupCount = uiState.groupCount,
-            onGroupClick = onNavigateToGroup
-        )
+        // ========== 底层：模糊背景图（无顶部约束，自然延伸到状态栏区域） ==========
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(max = 240.dp)
+        ) {
+            Image(
+                painter = painterResource(id = R.drawable.backround),
+                contentDescription = null,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .blur(64.dp),
+                contentScale = ContentScale.Crop
+            )
+            // 暗色遮罩层
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.6f))
+            )
+        }
 
-        // ===== 3. 设置列表 =====
-        SettingsSection(
-            readingTime = "12.5 小时", // TODO: 加载真实阅读时长
-            isDarkMode = uiState.isDarkMode,
-            onDarkModeToggle = { viewModel.toggleDarkMode() }
-        )
+        // ========== 顶层：可滚动内容 ==========
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+        ) {
+            // 头部内容区域（透明底，让底层模糊图透出来；statusBarsPadding 让文字避开状态栏）
+            ProfileHeaderSection(
+                username = uiState.username,
+                bio = uiState.bio,
+                avatarUrl = uiState.avatarUrl,
+                onClickUserCard = onNavigateToProfile,
+                isDarkMode = uiState.isDarkMode,
+                onDarkModeToggle = { viewModel.toggleDarkMode() }
+            )
 
-        Spacer(modifier = Modifier.height(32.dp))
+            // 功能网格 + 设置列表（米色/白色背景从这里开始）
+            FunctionGridSection(
+                localCount = uiState.localCount,
+                onBookListClick = onNavigateToBookList,
+                publishCount = uiState.publishCount,
+                onPublishClick = onNavigateToPublish,
+                groupCount = uiState.groupCount,
+                onGroupClick = onNavigateToGroup
+            )
+
+            SettingsSection(
+                readingTime = "12.5 小时",
+                isDarkMode = uiState.isDarkMode,
+                onDarkModeToggle = { viewModel.toggleDarkMode() }
+            )
+
+            Spacer(modifier = Modifier.height(32.dp))
+        }
     }
 }
 
@@ -141,30 +166,13 @@ private fun ProfileHeaderSection(
     isDarkMode: Boolean,
     onDarkModeToggle: () -> Unit,
 ) {
+    // 头部内容（透明底，底层模糊图透出；statusBarsPadding 让内容避开状态栏）
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .heightIn(max = 240.dp)
     ) {
-        // ===== 背景图（模糊 + 暗化遮罩） =====
-        Image(
-            painter = painterResource(id = R.drawable.backround),
-            contentDescription = null,
-            modifier = Modifier
-                .fillMaxSize()
-                .blur(64.dp),
-            contentScale = ContentScale.Crop
-        )
-        // 暗色遮罩层
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Color.Black.copy(alpha = 0.6f))
-        )
-
-        Column(modifier = Modifier.fillMaxWidth()) {
-            Spacer(modifier = Modifier.height(32.dp))
-
+        Column(modifier = Modifier.fillMaxWidth().statusBarsPadding()) {
             // 右上角签到按钮
             Row(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp),
