@@ -24,6 +24,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoStories
 import androidx.compose.material.icons.filled.CalendarToday
@@ -43,6 +45,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -52,6 +55,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.layout.ContentScale
+import com.reading.my.R
 import com.reading.my.ui.theme.*
 
 /**
@@ -80,11 +86,14 @@ import com.reading.my.ui.theme.*
 fun BookstoreScreen() {
     var selectedCategory by remember { mutableIntStateOf(0) } // 0=轻小说, 1=漫画, 2=有声, 3=短篇
 
-    // 整体可滚动容器
+    // 整体一体滚动容器：头部 + 内容区一起滚动
+    val scrollState = rememberScrollState()
+
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFF1b1c1c)) // 头部深色背景
+            .background(Color(0xFF1b1c1c))
+            .verticalScroll(scrollState)
     ) {
         // ===== 1. 沉浸式头部区域 =====
         BookstoreImmersiveHeader(
@@ -92,22 +101,15 @@ fun BookstoreScreen() {
             onCategorySelected = { selectedCategory = it }
         )
 
-        // ===== 下方内容区（浅色背景） =====
+        // ===== 2. 内容区（浅色背景，随头部一起滚动） =====
         Column(
             modifier = Modifier
-                .weight(1f)
-                .background(Color(0xFFF9F9F9)) // clean-surface
-                .verticalScroll(rememberScrollState())
+                .fillMaxWidth()
+                .background(Color(0xFFF9F9F9))
         ) {
-            // ===== 2. 功能图标网格 =====
             FunctionIconGrid()
-
-            // ===== 3. 人气风向标（4列书籍网格） =====
             PopularBooksSection()
-
-            // ===== 4. 热门书籍列表（横向） =====
             HotBookListSection()
-
             Spacer(modifier = Modifier.height(24.dp))
         }
     }
@@ -120,14 +122,32 @@ private fun BookstoreImmersiveHeader(
     selectedCategory: Int,
     onCategorySelected: (Int) -> Unit,
 ) {
-    Box(modifier = Modifier.fillMaxWidth()) {
-        // TODO: 头部背景图加载 - 需要网络图片或本地资源
-        // 参考设计: 氛围感背景图 + blur-sm + brightness-0.5
-        // 当前使用纯深色背景替代
+    // 头部区域：限定高度 + 裁剪防溢出
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(max = 300.dp) // 限制背景图最大高度
+            .clip(RoundedCornerShape(bottomStart = 20.dp, bottomEnd = 20.dp))
+    ) {
+        // 背景图（模糊 + Crop填充）
+        Image(
+            painter = painterResource(id = R.drawable.backround),
+            contentDescription = null,
+            modifier = Modifier
+                .fillMaxSize()
+                .blur(28.dp), // 强模糊去细节
+            contentScale = ContentScale.Crop
+        )
+        // 暗色遮罩层（确保文字可读）
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.6f))
+        )
 
         Column(modifier = Modifier.fillMaxWidth()) {
             // 状态栏占位 + 内边距
-            Spacer(modifier = Modifier.height(48.dp))
+            Spacer(modifier = Modifier.height(32.dp))
 
             // --- 顶部分类Tab + AI对话按钮 ---
             Row(
