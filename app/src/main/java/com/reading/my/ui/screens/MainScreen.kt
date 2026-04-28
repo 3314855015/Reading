@@ -226,11 +226,10 @@ private fun BottomNavigationBar(
 ) {
     Surface(
         modifier = Modifier
-            .fillMaxWidth()
-            .navigationBarsPadding(),
-        shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
-        color = Color.White.copy(alpha = 0.85f),
-        shadowElevation = 12.dp,
+            .fillMaxWidth(),
+//            .navigationBarsPadding(),
+        color = Color.White,
+        tonalElevation = 8.dp,
     ) {
         Row(
             modifier = Modifier
