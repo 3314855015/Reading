@@ -129,18 +129,14 @@ fun MainScreen(
         }
     ) { innerPadding ->
         // 详情页和阅读器全屏覆盖，不应用 Scaffold 的 padding
-        // 普通 Tab 页应用 top（状态栏）+ bottom（导航栏）padding
+        // 普通 Tab 页仅保留 bottom（导航栏）padding，top（状态栏）由各页面自行处理
         val isFullScreen = selectedBookId != null || readerState != null || showProfileActivity || showEditProfile
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .then(
                     if (isFullScreen) Modifier  // 全屏页面自己处理 insets
-                    else Modifier.padding(
-                        top = if (selectedRoute == Screen.Bookstore.route) 0.dp
-                              else innerPadding.calculateTopPadding(),
-                        bottom = innerPadding.calculateBottomPadding()
-                    )
+                    else Modifier.padding(bottom = innerPadding.calculateBottomPadding())
                 )
         ) {
             AnimatedContent(
