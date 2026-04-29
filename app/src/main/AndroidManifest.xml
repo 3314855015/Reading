@@ -28,8 +28,12 @@
             android:theme="@style/Theme.Reading">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
-
                 <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <!-- 接收 Cwriter 写作APP 的同步 Intent -->
+            <intent-filter>
+                <action android:name="com.reading.app.IMPORT_BOOK" />
+                <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </activity>
     </application>

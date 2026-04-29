@@ -36,6 +36,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -62,6 +63,7 @@ import com.reading.my.ui.screens.reader.ReaderScreen
 import com.reading.my.ui.screens.profile.ProfileScreen
 import com.reading.my.ui.screens.profile.ProfileActivityScreen
 import com.reading.my.ui.screens.profile.EditProfileScreen
+import com.reading.my.ui.screens.sync.SyncImportScreen
 
 /**
  * 主界面 - 底部导航容器
@@ -82,10 +84,11 @@ import com.reading.my.ui.screens.profile.EditProfileScreen
 fun MainScreen(
     userAvatarUrl: String? = null,
     onNavigateToLogin: () -> Unit = {},
+    pendingSyncPayload: String? = null,
 ) {
     val items = BottomNavItem.tabs
     var selectedRoute by remember { mutableStateOf(Screen.Bookshelf.route) }
-    
+
     // 书籍详情导航状态
     var selectedBookId by remember { mutableStateOf<Long?>(null) }
     // 阅读器导航状态：(章节列表, 当前章节索引)
@@ -93,11 +96,23 @@ fun MainScreen(
     // 个人页导航状态
     var showProfileActivity by remember { mutableStateOf(false) }
     var showEditProfile by remember { mutableStateOf(false) }
+    // 同步页面导航状态
+    var showSyncScreen by remember { mutableStateOf(false) }
+    var syncPayloadJson by remember { mutableStateOf<String?>(null) }
+
+    // 当从 Cwriter 收到同步 Intent 时，自动打开同步页面
+    LaunchedEffect(pendingSyncPayload) {
+        if (!pendingSyncPayload.isNullOrEmpty()) {
+            syncPayloadJson = pendingSyncPayload
+            showSyncScreen = true
+        }
+    }
 
     // 系统返回键拦截：按页面栈优先级依次消费，最底层才退出 APP
     // 优先级：资料编辑 > 个人动态 > 阅读器 > 书籍详情 > 主 Tab（放行给系统）
     BackHandler(enabled = showEditProfile) { showEditProfile = false }
     BackHandler(enabled = showProfileActivity) { showProfileActivity = false }
+    BackHandler(enabled = showSyncScreen) { showSyncScreen = false }
 //    BackHandler(enabled = readerState != null) { readerState = null }
     BackHandler(enabled = selectedBookId != null) { selectedBookId = null }
 
@@ -107,7 +122,7 @@ fun MainScreen(
         contentWindowInsets = WindowInsets(0, 0, 0, 0), // 禁止Scaffold自动加状态栏padding（日志证明：innerPadding.top=34dp把内容推下94px）
         // 仅在非详情页时显示底部导航栏
         bottomBar = {
-            if (selectedBookId == null && readerState == null && !showProfileActivity && !showEditProfile) {
+            if (selectedBookId == null && readerState == null && !showProfileActivity && !showEditProfile && !showSyncScreen) {
                 BottomNavigationBar(
                     items = items,
                     selectedRoute = selectedRoute,
@@ -121,7 +136,7 @@ fun MainScreen(
     ) { innerPadding ->
         // 详情页和阅读器全屏覆盖，不应用 Scaffold 的 padding
         // 普通 Tab 页仅保留 bottom（导航栏）padding，top（状态栏）由各页面自行处理
-        val isFullScreen = selectedBookId != null || readerState != null || showProfileActivity || showEditProfile
+        val isFullScreen = selectedBookId != null || readerState != null || showProfileActivity || showEditProfile || showSyncScreen
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -188,8 +203,18 @@ fun MainScreen(
                             }
                         )
                     }
+                    // 同步页面（覆盖在主界面之上）
+                    showSyncScreen -> SyncImportScreen(
+                        payloadJson = syncPayloadJson,
+                        onBack = { showSyncScreen = false }
+                    )
+                    // 书架 Tab
                     route == Screen.Bookshelf.route -> BookshelfTab(
-                        onNavigateToDetail = { bid -> selectedBookId = bid }
+                        onNavigateToDetail = { bid -> selectedBookId = bid },
+                        onNavigateToSync = {
+                            showSyncScreen = true
+                            syncPayloadJson = null  // 手动打开时无预设payload
+                        }
                     )
                     route == Screen.Bookstore.route -> BookstoreTab()
                     route == Screen.Community.route -> CommunityTab()
@@ -314,8 +339,14 @@ private fun ProfileAvatarPlaceholder(username: String) {
 
 /** 书架页 - 默认首页（书架页面） */
 @Composable
-private fun BookshelfTab(onNavigateToDetail: (Long) -> Unit = {}) {
-    BookshelfScreen(onNavigateToDetail = onNavigateToDetail)
+private fun BookshelfTab(
+    onNavigateToDetail: (Long) -> Unit = {},
+    onNavigateToSync: () -> Unit = {},
+) {
+    BookshelfScreen(
+        onNavigateToDetail = onNavigateToDetail,
+        onNavigateToSync = onNavigateToSync
+    )
 }
 
 // ==================== 书库/发现页 ====================

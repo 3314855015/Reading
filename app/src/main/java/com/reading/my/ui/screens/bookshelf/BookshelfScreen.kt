@@ -100,6 +100,7 @@ import com.reading.my.ui.theme.*
 @Composable
 fun BookshelfScreen(
     onNavigateToDetail: (Long) -> Unit = {},
+    onNavigateToSync: () -> Unit = {},
     viewModel: BookshelfViewModel = hiltViewModel(),
 ) {
     val context = LocalContext.current
@@ -145,7 +146,7 @@ fun BookshelfScreen(
                 contentDescription = null,
                 modifier = Modifier
                     .fillMaxSize()
-                    .blur(12.dp),
+                    .blur(0.dp),
                 contentScale = ContentScale.Crop
             )
             // 暗色遮罩层
@@ -193,6 +194,12 @@ fun BookshelfScreen(
                                     onClick = {
                                         showMenu = false
                                         filePicker.launch(arrayOf("application/vnd.openxmlformats-officedocument.wordprocessingml.document"))
+                                    })
+                                DropdownMenuItem(
+                                    text = { Text("Cwriter同步", fontSize = 14.sp) },
+                                    onClick = {
+                                        showMenu = false
+                                        onNavigateToSync()
                                     })
                                 DropdownMenuItem(
                                     text = { Text("清空缓存", fontSize = 14.sp) },

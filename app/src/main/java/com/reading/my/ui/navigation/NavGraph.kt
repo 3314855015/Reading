@@ -39,6 +39,7 @@ import com.reading.my.ui.screens.login.LoginScreen
 fun NavGraph(
     navController: NavHostController,
     sessionManager: UserSessionManager,
+    pendingSyncPayload: String? = null,
 ) {
     var isSessionChecked by remember { mutableStateOf(false) }
     var isLoggedIn by remember { mutableStateOf(false) }
@@ -77,7 +78,7 @@ fun NavGraph(
             }
 
             composable(Screen.Main.route) {
-                MainScreen()
+                MainScreen(pendingSyncPayload = pendingSyncPayload)
             }
         }
     }
