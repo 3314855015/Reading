@@ -12,6 +12,8 @@ import com.reading.my.data.local.parser.DocxParser
 import com.reading.my.domain.model.Book
 import com.reading.my.domain.model.BookSource
 import com.reading.my.domain.model.Chapter
+import com.reading.my.domain.model.SyncImportResult
+import com.reading.my.domain.model.SyncPayload
 import com.reading.my.domain.repository.BookRepository
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
@@ -169,7 +171,114 @@ class BookRepositoryImpl @Inject constructor(
         }
     }
 
-    /** 尝试从 URI 获取显示名称，失败则返回 null */
+    /**
+     * 从 Cwriter 写作APP同步导入书籍
+     *
+     * 增量同步策略：
+     * 1. 根据 payload.bookId（Cwriter 的 syncId）查找本地是否已有该书的记录
+     *    - 通过 DataStore 存储的 syncId → localBookId 映射来查找
+     * 2. 首次同步：新建 book 记录 + 全量写入章节
+     * 3. 增量同步：遍历章节，通过 chapterIndex + contentHash 判断是否需要更新
+     */
+    override suspend fun importFromSyncPayload(payload: SyncPayload): SyncImportResult {
+        return try {
+            Log.i(TAG, "开始同步导入: 「${payload.bookTitle}」${payload.chapters.size}章, v${payload.syncVersion}")
+
+            // 1. 查找或创建书籍记录（通过 syncId 匹配）
+            val existingBookId = findBookIdBySyncId(payload.bookId)
+            val bookId: Long
+
+            if (existingBookId != null) {
+                // 增量更新已有书籍
+                bookId = existingBookId
+                Log.d(TAG, "找到已存在的书籍: localBookId=$bookId, syncId=${payload.bookId}")
+            } else {
+                // 首次导入：创建新书籍记录
+                val entity = LocalBookEntity(
+                    title = payload.bookTitle,
+                    author = payload.author,
+                    description = payload.description,
+                    chapterCount = payload.chapters.size,
+                    filePath = "sync://${payload.bookId}", // 标记来源为同步
+                )
+                bookId = localBookDao.insertBook(entity)
+                // 保存 syncId → localBookId 映射
+                saveSyncIdMapping(payload.bookId, bookId)
+                Log.i(TAG, "创建新书籍: bookId=$bookId, syncId=${payload.bookId}")
+            }
+
+            // 2. 同步章节（增量逻辑）
+            val existingChapters = chapterDao.getChaptersByBookIdSync(bookId)
+                .associateBy { it.chapterIndex }
+
+            var newCount = 0
+            var updatedCount = 0
+
+            val chapterEntities = payload.chapters.map { ch ->
+                val existing = existingChapters[ch.chapterIndex]
+                if (existing == null) {
+                    // 新章节
+                    newCount++
+                    ChapterEntity(
+                        bookId = bookId,
+                        chapterIndex = ch.chapterIndex,
+                        title = ch.title,
+                        content = ch.content,
+                        volumeName = ch.volumeName,
+                        wordCount = ch.content.length,
+                    )
+                } else if (existing.content != ch.content) {
+                    // 内容有变化，更新
+                    updatedCount++
+                    ChapterEntity(
+                        id = existing.id,
+                        bookId = bookId,
+                        chapterIndex = ch.chapterIndex,
+                        title = ch.title,
+                        content = ch.content,
+                        volumeName = ch.volumeName ?: existing.volumeName,
+                        wordCount = ch.content.length,
+                    )
+                } else {
+                    // 无变化，保留原数据
+                    existing
+                }
+            }
+
+            // 3. 批量写入章节
+            chapterDao.insertChapters(chapterEntities)
+
+            // 4. 更新书籍元数据
+            val bookEntity = localBookDao.getBookById(bookId)
+            if (bookEntity != null) {
+                localBookDao.updateBook(
+                    bookEntity.copy(
+                        title = payload.bookTitle,
+                        author = payload.author,
+                        description = payload.description,
+                        chapterCount = payload.chapters.size,
+                    )
+                )
+            }
+
+            Log.i(TAG, "同步完成: bookId=$bookId, total=${payload.chapters.size}, new=$newCount, updated=$updatedCount")
+
+            SyncImportResult(
+                success = true,
+                message = "同步成功：共 ${payload.chapters.size} 章（新增 $newCount，更新 $updatedCount）",
+                bookId = bookId,
+                totalChapters = payload.chapters.size,
+                newChapters = newCount,
+                updatedChapters = updatedCount,
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "同步导入异常", e)
+            SyncImportResult(
+                success = false,
+                message = "同步失败：${e.message}",
+            )
+        }
+    }
     private fun getFileNameFromUri(uri: Uri): String? = runCatching {
         context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
             val nameIndex = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
@@ -238,4 +347,45 @@ class BookRepositoryImpl @Inject constructor(
         volumeName = volumeName,
         wordCount = wordCount,
     )
+
+    // ==================== 同步 ID 映射（syncId ↔ localBookId）====================
+
+    /**
+     * 通过 Cwriter 的 syncId 查找本地书籍的 Room 主键 ID
+     *
+     * 使用 DataStore 持久化映射关系，key 格式: "sync_{syncId}"
+     */
+    private suspend fun findBookIdBySyncId(syncId: String): Long? {
+        return try {
+            val prefsKey = "sync_$syncId"
+            val dataStore = androidx.datastore.preferences.preferencesDataStore(
+                name = "sync_mappings"
+            )
+            // 使用简单的文件映射替代 DataStore（避免重复 DataStore 声明问题）
+            val mappingFile = java.io.File(context.filesDir, "sync_mappings/${prefsKey}")
+            if (mappingFile.exists()) {
+                mappingFile.readText().toLongOrNull()
+            } else {
+                null
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "查找 syncId 映射失败", e)
+            null
+        }
+    }
+
+    /**
+     * 保存 syncId → localBookId 的映射关系
+     */
+    private fun saveSyncIdMapping(syncId: String, localBookId: Long) {
+        try {
+            val prefsKey = "sync_$syncId"
+            val dir = java.io.File(context.filesDir, "sync_mappings")
+            dir.mkdirs()
+            val file = java.io.File(dir, prefsKey)
+            file.writeText(localBookId.toString())
+        } catch (e: Exception) {
+            Log.w(TAG, "保存 syncId 映射失败", e)
+        }
+    }
 }

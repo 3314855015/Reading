@@ -3,6 +3,8 @@ package com.reading.my.domain.repository
 import android.net.Uri
 import com.reading.my.domain.model.Book
 import com.reading.my.domain.model.Chapter
+import com.reading.my.domain.model.SyncImportResult
+import com.reading.my.domain.model.SyncPayload
 import kotlinx.coroutines.flow.Flow
 
 /**
@@ -45,6 +47,17 @@ interface BookRepository {
      * @return 导入成功后的 Book；失败返回 null
      */
     suspend fun importFromUri(uri: Uri, authorName: String = "阅读者"): Book?
+
+    /**
+     * 从 Cwriter 写作APP同步导入书籍
+     *
+     * 支持增量同步：根据 bookId 匹配已有书籍，
+     * 通过 contentHash 检测章节变化，仅更新有变化的章节。
+     *
+     * @param payload Cwriter 导出的 SyncPayload JSON 解析后的对象
+     * @return 同步导入结果（含新增/更新统计）
+     */
+    suspend fun importFromSyncPayload(payload: SyncPayload): SyncImportResult
 
     // ==================== 章节 ====================
 
