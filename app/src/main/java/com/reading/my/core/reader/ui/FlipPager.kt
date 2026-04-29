@@ -1,6 +1,8 @@
 package com.reading.my.core.reader.ui
 
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.pager.HorizontalPager
@@ -10,12 +12,16 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import android.util.Log
 import com.reading.my.core.reader.domain.ChapterPages
 import com.reading.my.core.reader.domain.PageLayoutConfig
 import com.reading.my.core.reader.domain.ReaderTheme
 import com.reading.my.core.reader.engine.BookPageRenderer
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlin.math.abs
 
 enum class FlipMode {
     HORIZONTAL,
@@ -110,11 +116,12 @@ fun FlipPagerReader(
         }
     }
 
-    // ---- 2) 边界越跳转检测（Overscroll Detection）----
+    // ---- 2) 边界越跳转检测（多页章节：Overscroll Detection）----
     // 核心逻辑：
     //   滚动开始时记录起始页码 → 滚动结束后若仍在同一边界页 → 触发跨章
     //   这排除了"正常翻到边界"的情况（那种情况页码会变化）
-    if (onReachStart != null || onReachEnd != null) {
+    // ★ 仅在 pageCount > 1 时启用，单页章节由下面的 pointerInput 处理
+    if ((onReachStart != null || onReachEnd != null) && pageCount > 1) {
         LaunchedEffect(pagerState) {
             var scrollStartPage = -1
 
@@ -122,18 +129,14 @@ fun FlipPagerReader(
                 .distinctUntilChanged()
                 .collect { isScrolling ->
                     if (isScrolling) {
-                        // 记录滚动开始时的页码
                         scrollStartPage = pagerState.currentPage
                     } else {
-                        // 滚动结束 → 检测是否为越界操作
                         val settledPage = pagerState.currentPage
                         if (scrollStartPage == settledPage && scrollStartPage >= 0) {
-                            // 页码没变 → 用户尝试了越界
                             if (settledPage == 0 && currentOnReachStart != null) {
                                 currentOnReachStart?.invoke()
                             } else if (settledPage == pageCount - 1
                                 && currentOnReachEnd != null
-                                && pageCount > 1
                             ) {
                                 currentOnReachEnd?.invoke()
                             }
@@ -144,7 +147,60 @@ fun FlipPagerReader(
         }
     }
 
-    Box(modifier = Modifier.fillMaxSize()) {
+    // ---- 3) 单页章节的方向性手势检测（pageCount == 1 时专用）----
+    //
+    // 【问题根因】
+    //   HorizontalPager 在 pageCount=1 时，currentPage 恒为 0。
+    //   此时 0 既是首页(应触onReachStart)也是末页(应触onReachEnd)，
+    //   if/else if 的判断顺序导致：无论用户左滑还是右滑，永远命中 onReachStart → 回退循环
+    //
+    // 【解决】
+    //   用 awaitEachGesture + awaitPointerEvent 手动追踪手指总偏移量，
+    //   在手势结束时根据方向调用对应回调：
+    //     accumulatedX < 0 (手指左移) → onReachStart (回上一章末页)
+    //     accumulatedX > 0 (手指右移) → onReachEnd (进下一章首页)
+    val density = LocalDensity.current
+    /** 最小有效滑动距离(dp)，低于此值视为点击而非翻页 */
+    val minSwipeDistanceDp = 30f
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .then(
+                if (pageCount == 1 && (onReachStart != null || onReachEnd != null)) {
+                    Modifier.pointerInput(Unit) {
+                        awaitEachGesture {
+                            // 等待手指按下
+                            val down = awaitFirstDown(requireUnconsumed = false)
+                            var totalDragX = 0f
+
+                            do {
+                                // 追踪每次移动事件，累加水平位移
+                                val event = awaitPointerEvent()
+                                if (event.type == PointerEventType.Move) {
+                                    val change = event.changes.firstOrNull() ?: continue
+                                    totalDragX += change.position.x - change.previousPosition.x
+                                }
+                            } while (event.changes.any { it.pressed })
+
+                            // 手势结束 → 判断方向
+                            val minSwipePx = minSwipeDistanceDp * density.density
+                            if (abs(totalDragX) >= minSwipePx) {
+                                if (totalDragX > 0) {
+                                    Log.d("FlipPager", "👆 单页章节: 左滑 detected (dx=${"%.1f".format(totalDragX)}), 触发onReachStart")
+                                    currentOnReachStart?.invoke()
+                                } else {
+                                    Log.d("FlipPager", "👆 单页章节: 右滑 detected (dx=${"%.1f".format(totalDragX)}), 触发onReachEnd")
+                                    currentOnReachEnd?.invoke()
+                                }
+                            } else {
+                                Log.d("FlipPager", "👆 单页章节: 滑动距离不足 (dx=${"%.1f".format(totalDragX)} < ${minSwipePx.toInt()}px), 忽略")
+                            }
+                        }
+                    }
+                } else Modifier
+            )
+    ) {
         HorizontalPager(
             state = pagerState,
             modifier = Modifier.fillMaxSize(),
