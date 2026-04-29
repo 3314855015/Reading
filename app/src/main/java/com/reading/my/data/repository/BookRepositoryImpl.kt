@@ -9,6 +9,8 @@ import com.reading.my.data.local.database.dao.LocalBookDao
 import com.reading.my.data.local.database.entity.ChapterEntity
 import com.reading.my.data.local.database.entity.LocalBookEntity
 import com.reading.my.data.local.parser.DocxParser
+import com.reading.my.core.reader.engine.L2DatabaseCache
+import com.reading.my.core.reader.engine.RenderCache
 import com.reading.my.domain.model.Book
 import com.reading.my.domain.model.BookSource
 import com.reading.my.domain.model.Chapter
@@ -33,6 +35,7 @@ class BookRepositoryImpl @Inject constructor(
     @ApplicationContext private val context: Context,
     private val localBookDao: LocalBookDao,
     private val chapterDao: ChapterDao,
+    private val l2Cache: L2DatabaseCache?,
 ) : BookRepository {
 
     companion object {
@@ -40,6 +43,78 @@ class BookRepositoryImpl @Inject constructor(
 
         /** App 内部缓存目录（存放从 URI 复制的文件） */
         private const val IMPORT_CACHE_DIR = "imported_books"
+
+        /**
+         * ★ 内容清洗：规范化从 Cwriter / 外部来源导入的正文
+         *
+         * 解决的问题：
+         * - Cwriter 编辑器产生的 4 空格/Tab 缩进
+         * - 混合换行符 (\r\n, \r, \n)
+         * - 零宽字符 (ZWSP, BOM, NBSP)
+         * - 过多的空行 (>2行压缩为1行，保留段落间隔)
+         * - 每行首尾多余空白
+         *
+         * @param raw 原始文本
+         * @return 清洗后的规范文本
+         */
+        fun sanitizeContent(raw: String): String {
+            if (raw.isBlank()) return ""
+
+            var text = raw
+
+            // 1. 统一换行符
+            text = text.replace("\r\n", "\n").replace("\r", "\n")
+
+            // 2. 移除零宽字符和不可见控制字符（保留 \n 和普通空格/tab）
+            text = text
+                .replace("\uFEFF", "")       // BOM
+                .replace("\u200B", "")       // ZWSP (Zero Width Space)
+                .replace("\u200C", "")       // ZWNJ (Zero Width Non-Joiner)
+                .replace("\u200D", "")       // ZWJ (Zero Width Joiner)
+                .replace("\u00A0", " ")      // NBSP → 普通空格
+                .replace("\u3000", " ")      // 全角空格 → 半角空格
+
+            // 3. 逐行处理：去除每行的统一缩进 + 首尾空白
+            val lines = text.split('\n')
+            val cleanedLines = mutableListOf<String>()
+
+            for (line in lines) {
+                var trimmed = line.trimEnd()  // 先去尾部空白
+
+                // 检测并去除常见的段落缩进：
+                // - 4个空格缩进 (Cwriter 编辑器常见)
+                // - Tab 缩进
+                // - 2个全角空格（中文首行缩进）
+                when {
+                    trimmed.startsWith("    ") -> trimmed = trimmed.removePrefix("    ")
+                    trimmed.startsWith("\t")   -> trimmed = trimmed.trimStart()
+                    trimmed.startsWith("　　") -> trimmed = trimmed.removePrefix("　　")
+                }
+
+                // 二次 trim（去除缩进后可能残留的空白）
+                cleanedLines.add(trimmed.trim())
+            }
+
+            // 4. 压缩过多空行（>2个连续空行 → 1个空行，保留段落分隔）
+            val result = StringBuilder()
+            var consecutiveBlank = 0
+
+            for ((i, line) in cleanedLines.withIndex()) {
+                if (line.isEmpty()) {
+                    consecutiveBlank++
+                    if (consecutiveBlank <= 1) {  // 最多保留一个空行（即一行间隔）
+                        result.append('\n')
+                    }
+                    // consecutiveBlank > 1 时跳过，实现压缩
+                } else {
+                    consecutiveBlank = 0
+                    if (result.isNotEmpty()) result.append('\n')
+                    result.append(line)
+                }
+            }
+
+            return result.toString().trim()
+        }
     }
 
     // ==================== 书籍 CRUD ====================
@@ -184,8 +259,51 @@ class BookRepositoryImpl @Inject constructor(
         return try {
             Log.i(TAG, "开始同步导入: 「${payload.bookTitle}」${payload.chapters.size}章, v${payload.syncVersion}")
 
+            // ════════════ 0. 内容完整性预检 ════════════
+            if (payload.chapters.isEmpty()) {
+                Log.w(TAG, "❌ 预检失败: 章节列表为空! bookId=${payload.bookId}, v${payload.syncVersion}")
+                return SyncImportResult(
+                    success = false,
+                    message = "同步失败：未收到任何章节数据（Cwriter端可能传输错误），当前版本 v${payload.syncVersion}",
+                )
+            }
+
+            // 统计内容情况（用于诊断）
+            var totalContentLength = 0
+            var emptyChapterCount = 0
+            val contentLengthReport = payload.chapters.map { ch ->
+                val len = ch.content.length
+                totalContentLength += len
+                if (len <= 1) emptyChapterCount++
+                "  [ch${ch.chapterIndex}] title='${ch.title.take(20)}' contentLen=$len"
+            }
+
+            Log.i(TAG, "📊 内容诊断: 总字节=$totalContentLength, 空内容章节=$emptyChapterCount/${payload.chapters.size}")
+            contentLengthReport.forEach { Log.d(TAG, it) }
+
+            // 严重异常：有章节但全部内容为空 → 很可能是 Cwriter 传输失败
+            if (totalContentLength < payload.chapters.size * 2 && payload.chapters.isNotEmpty()) {
+                // 平均每章不到2个字符，明显异常
+                Log.e(TAG, "❌ 预检失败: 内容几乎为空! totalLen=$totalContentLength, chapters=${payload.chapters.size}, v${payload.syncVersion}")
+                Log.e(TAG, "❌ 这通常意味着 Cwriter 端的 Intent 传输截断/序列化失败")
+                return SyncImportResult(
+                    success = false,
+                    message = "同步失败：收到 ${payload.chapters.size} 章但内容为空（共 $totalContentLength 字符）。\n" +
+                        "可能原因：Cwriter 传输中断 / Intent 数据截断 / 版本号 v${payload.syncVersion} 已递增但数据未正确发送。\n" +
+                        "建议：请在 Cwriter 中重新触发同步。",
+                )
+            }
+
+            // 警告：部分章节为空（但不阻断导入）
+            if (emptyChapterCount > 0) {
+                Log.w(TAG, "⚠️ 有 $emptyChapterCount/${payload.chapters.size} 个章节内容为空或接近空")
+            }
+
             // 1. 查找或创建书籍记录（通过 syncId 匹配）
-            val existingBookId = findBookIdBySyncId(payload.bookId)
+            val mappedBookId = findBookIdBySyncId(payload.bookId)
+            // ★ 验证映射中的 bookId 是否在数据库中真实存在
+            //    用户可能已删除书籍，但文件映射残留旧 bookId，导致 FK 约束失败
+            val existingBookId = mappedBookId?.takeIf { localBookDao.getBookById(it) != null }
             val bookId: Long
 
             if (existingBookId != null) {
@@ -193,6 +311,10 @@ class BookRepositoryImpl @Inject constructor(
                 bookId = existingBookId
                 Log.d(TAG, "找到已存在的书籍: localBookId=$bookId, syncId=${payload.bookId}")
             } else {
+                // 首次导入 / 旧书已被删除 → 创建新书籍记录
+                if (mappedBookId != null && localBookDao.getBookById(mappedBookId) == null) {
+                    Log.w(TAG, "⚠️ syncId 映射的 bookId=$mappedBookId 已不存在(用户删除了书), 将创建新书记录")
+                }
                 // 首次导入：创建新书籍记录
                 val entity = LocalBookEntity(
                     title = payload.bookTitle,
@@ -213,31 +335,37 @@ class BookRepositoryImpl @Inject constructor(
 
             var newCount = 0
             var updatedCount = 0
+            var hasContentChanges = false
 
             val chapterEntities = payload.chapters.map { ch ->
+                // ★ 完整内容清洗：缩进、零宽字符、空行压缩、换行符统一
+                val sanitizedContent = sanitizeContent(ch.content)
+
                 val existing = existingChapters[ch.chapterIndex]
                 if (existing == null) {
                     // 新章节
                     newCount++
+                    hasContentChanges = true
                     ChapterEntity(
                         bookId = bookId,
                         chapterIndex = ch.chapterIndex,
                         title = ch.title,
-                        content = ch.content,
+                        content = sanitizedContent,
                         volumeName = ch.volumeName,
-                        wordCount = ch.content.length,
+                        wordCount = sanitizedContent.length,
                     )
-                } else if (existing.content != ch.content) {
+                } else if (existing.content != sanitizedContent) {
                     // 内容有变化，更新
                     updatedCount++
+                    hasContentChanges = true
                     ChapterEntity(
                         id = existing.id,
                         bookId = bookId,
                         chapterIndex = ch.chapterIndex,
                         title = ch.title,
-                        content = ch.content,
+                        content = sanitizedContent,
                         volumeName = ch.volumeName ?: existing.volumeName,
-                        wordCount = ch.content.length,
+                        wordCount = sanitizedContent.length,
                     )
                 } else {
                     // 无变化，保留原数据
@@ -259,6 +387,18 @@ class BookRepositoryImpl @Inject constructor(
                         chapterCount = payload.chapters.size,
                     )
                 )
+            }
+
+            // 5. 清除该书的 L2 + L1 缓存（内容已更新，旧分页结果失效）
+            if (hasContentChanges) {
+                val cacheKey = bookId.toString()
+                try {
+                    l2Cache?.evictBook(cacheKey)
+                    RenderCache.evictBook(cacheKey)
+                    Log.d(TAG, "已清除书籍 $cacheKey 的 L2+L1 渲染缓存")
+                } catch (e: Exception) {
+                    Log.w(TAG, "清除缓存失败（非致命）", e)
+                }
             }
 
             Log.i(TAG, "同步完成: bookId=$bookId, total=${payload.chapters.size}, new=$newCount, updated=$updatedCount")

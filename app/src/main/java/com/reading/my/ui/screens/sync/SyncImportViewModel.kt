@@ -115,22 +115,35 @@ class SyncImportViewModel @Inject constructor(
     private fun parseSyncPayloadJson(jsonStr: String): SyncPayload {
         val json = JSONObject(jsonStr)
 
+        // 记录原始 payload 大小（用于诊断传输是否完整）
+        Log.i(TAG, "📦 原始 JSON 大小: ${jsonStr.length} 字符, ${jsonStr.toByteArray().size / 1024}KB")
+
         val chaptersArray = json.optJSONArray("chapters") ?: JSONArray()
+        Log.i(TAG, "📦 章节数组长度: ${chaptersArray.length()}")
+        Log.d(TAG, "📦 book_id=${json.optString("book_id", "?")}, sync_version=${json.optInt("sync_version", -1)}")
+
         val chapters = mutableListOf<ChapterSyncItem>()
 
         for (i in 0 until chaptersArray.length()) {
             val ch = chaptersArray.getJSONObject(i)
+            val rawContent = ch.optString("content", "")
+            // 记录每个章节的原始内容长度
+            Log.d(TAG, "  📖 [ch${ch.optInt("chapter_index", i)}] title='${ch.optString("title", "?").take(15)}' contentLen=${rawContent.length}")
+
             chapters.add(
                 ChapterSyncItem(
                     chapterId = ch.getString("chapter_id"),
                     chapterIndex = ch.getInt("chapter_index"),
                     title = ch.optString("title", "第${ch.getInt("chapter_index") + 1}章"),
-                    content = ch.getString("content"),
+                    content = rawContent,
                     contentHash = ch.optString("contentHash", ""),
                     volumeName = ch.optString("volume_name", null).ifEmpty { null },
                 )
             )
         }
+
+        val totalContentLen = chapters.sumOf { it.content.length }
+        Log.i(TAG, "📦 解析完成: 「${json.optString("book_title", "?")}」${chapters.size}章, 总内容=${totalContentLen}字符, v${json.optInt("sync_version", 0)}")
 
         return SyncPayload(
             bookId = json.getString("book_id"),
