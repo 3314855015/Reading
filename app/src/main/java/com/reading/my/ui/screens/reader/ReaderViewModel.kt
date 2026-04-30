@@ -43,8 +43,16 @@ data class ReaderUiState(
      * - >0 → 具体页码（未来扩展：记住阅读位置）
      */
     val targetInitialPage: Int = 0,
+    /**
+     * 当前数据归属的书籍 ID（用于切书时阻止脏渲染）
+     *
+     * 问题：recomposition 比 LaunchedEffect/initReader 更早执行，
+     * 此时 uiState.chapterPages 还是旧书的数据，导致内容穿透。
+     * 解决：UI 层渲染前检查 currentBookId == 实际传入的 bookId。
+     */
+    val currentBookId: String = "",
 ) {
-    fun toLogStr(): String = "ch=$activeChapterIndex, pages=${chapterPages?.pageCount ?: "null"}, loading=$isLoading, target=$targetInitialPage"
+    fun toLogStr(): String = "ch=$activeChapterIndex, pages=${chapterPages?.pageCount ?: "null"}, loading=$isLoading, target=$targetInitialPage, bookId='$currentBookId'"
 }
 
 @HiltViewModel
@@ -79,6 +87,11 @@ class ReaderViewModel @Inject constructor(
      */
     fun initReader(chapters: List<Chapter>, startIndex: Int, bookId: String) {
         Log.d("ReaderVM", "⚡ initReader: startIndex=$startIndex, bookId='$bookId', 当前=[${_uiState.value.toLogStr()}]")
+
+        // 切书时清理 L3 预加载记录，防止旧书的 preloadedChapters 污染新书的预加载
+        // （如：A书ch1已标记预加载 → 切到B书 → B书ch1被误判为"已预加载"而跳过）
+        l3Cache?.invalidatePreloadHistory()
+
         this.chapters = chapters
         this.bookId = bookId
 
@@ -89,6 +102,7 @@ class ReaderViewModel @Inject constructor(
             activeChapterIndex = startIndex.coerceIn(0, chapters.size - 1),
             isLoading = true,
             targetInitialPage = preservedTarget,
+            currentBookId = bookId,  // ★ 切书时立即标记归属，防止旧书数据穿透渲染
         )
         Log.d("ReaderVM", "⚡ initReader done: ${_uiState.value.toLogStr()} (preservedTarget=$preservedTarget)")
     }

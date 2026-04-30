@@ -19,6 +19,7 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.hilt.navigation.compose.hiltViewModel
 import android.util.Log
+import androidx.compose.runtime.key
 import com.reading.my.core.reader.engine.RenderCache
 import com.reading.my.core.reader.domain.PageLayoutConfig
 import com.reading.my.core.reader.domain.ReaderTheme
@@ -98,35 +99,45 @@ fun ReaderScreen(
     }
 
     // ---- UI 渲染 ----
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(color = theme.backgroundColor)
-    ) {
-        when {
-            uiState.isLoading -> {
-                CircularProgressIndicator(modifier = Modifier.matchParentSize())
-            }
-            uiState.chapterPages != null && currentChapter != null -> {
-                ReaderContent(
-                    chapter = currentChapter!!,
-                    chapterPages = uiState.chapterPages!!,
-                    chapters = chapters,
-                    activeChapterIndex = uiState.activeChapterIndex,
-                    initialPage = uiState.targetInitialPage,
-                    onActiveChapterChanged = { newIndex ->
-                        // 外部回调通知（MainScreen 更新 readerState）
-                        onChapterChange?.invoke(newIndex)
-                    },
-                    onNavigatePrev = { viewModel.navigateToPrevChapter(configHash) },
-                    onNavigateNext = { viewModel.navigateToNextChapter() },
-                    config = config,
-                    theme = theme,
-                    bookTitle = bookTitle,
-                    totalChapters = totalChapters.coerceAtLeast(chapters.size),
-                    onBack = onBack,
-                    onPageChange = onPageChange,
-                )
+    // key(bookId): 切书时强制重建整棵渲染树
+    // ★ bookId 一致性守卫：recomposition 比 LaunchedEffect/initReader 更早执行，
+    //   此时 uiState.currentBookId 还是旧值 → 不渲染脏数据 → 显示 loading
+    key(bookId) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(color = theme.backgroundColor)
+        ) {
+            when {
+                uiState.isLoading || uiState.currentBookId != bookId -> {
+                    // loading=true 或 数据归属不匹配（切书竞态窗口）→ 显示加载指示器
+                    if (uiState.currentBookId.isNotEmpty() && uiState.currentBookId != bookId) {
+                        Log.d("ReaderScreen", "⛔ 渲染守卫拦截: state.bookId='${uiState.currentBookId}' ≠ 入参bookId='$bookId', 阻止脏数据渲染")
+                    }
+                    CircularProgressIndicator(modifier = Modifier.matchParentSize())
+                }
+                uiState.chapterPages != null && currentChapter != null -> {
+                    ReaderContent(
+                        chapter = currentChapter!!,
+                        chapterPages = uiState.chapterPages!!,
+                        chapters = chapters,
+                        activeChapterIndex = uiState.activeChapterIndex,
+                        initialPage = uiState.targetInitialPage,
+                        onActiveChapterChanged = { newIndex ->
+                            // 外部回调通知（MainScreen 更新 readerState）
+                            onChapterChange?.invoke(newIndex)
+                        },
+                        onNavigatePrev = { viewModel.navigateToPrevChapter(configHash) },
+                        onNavigateNext = { viewModel.navigateToNextChapter() },
+                        config = config,
+                        theme = theme,
+                        bookTitle = bookTitle,
+                        totalChapters = totalChapters.coerceAtLeast(chapters.size),
+                        onBack = onBack,
+                        onPageChange = onPageChange,
+                        bookId = bookId,
+                    )
+                }
             }
         }
     }
@@ -151,6 +162,7 @@ private fun ReaderContent(
     totalChapters: Int,
     onBack: () -> Unit,
     onPageChange: ((chapterIndex: Int, pageIndex: Int) -> Unit)?,
+    bookId: String = "",
 ) {
     var showBars by remember { mutableStateOf(false) }
 
@@ -172,6 +184,7 @@ private fun ReaderContent(
             chapterPages = chapterPages,
             config = config,
             theme = theme,
+            bookId = bookId,
             initialPage = initialPage,
             onPageChange = { pageIndex ->
                 onPageChange?.invoke(chapter.chapterIndex, pageIndex)
