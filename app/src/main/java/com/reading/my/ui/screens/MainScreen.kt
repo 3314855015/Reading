@@ -50,7 +50,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.reading.my.ui.navigation.AppPage
 import com.reading.my.ui.navigation.BottomNavItem
+import com.reading.my.ui.navigation.NavigationState
 import com.reading.my.ui.navigation.Screen
 import com.reading.my.ui.theme.BackgroundGray
 import com.reading.my.ui.theme.PrimaryOrange
@@ -64,6 +66,7 @@ import com.reading.my.ui.screens.profile.ProfileScreen
 import com.reading.my.ui.screens.profile.ProfileActivityScreen
 import com.reading.my.ui.screens.profile.EditProfileScreen
 import com.reading.my.ui.screens.sync.SyncImportScreen
+import android.util.Log
 
 /**
  * 主界面 - 底部导航容器
@@ -71,14 +74,19 @@ import com.reading.my.ui.screens.sync.SyncImportScreen
  * 结构：
  * ┌──────────────────────────────┐
  * │                              │
- * │      当前 Tab 内容区域        │  ← 动态切换：书架/书库/同好/我的
+ * │      当前页面内容区域         │  ← 由 NavigationState 页面栈驱动
  *│                              │
  *├──────────────────────────────┤
- *│ 📚书架  │📖书库  │👥同好  │👤我的 │  ← 底部导航栏
+ *│ 📚书架  │📖书库  │👥同好  │👤我的 │  ← 仅在根 Tab 时显示底部导航栏
  *└──────────────────────────────┘
  *
- * 登录后默认显示【书架】Tab。
- * "我的"Tab 有头像时用圆形头像代替图标。
+ * ## 导航架构
+ *
+ * 用 [NavigationState] 页面栈管理所有页面跳转：
+ * - **Root Tab**（栈底）：书架 / 书库 / 圈子 / 我的 → 按返回键退出 APP
+ * - **Sub Page**（压栈）：详情 / 阅读器 / 动态 / 编辑资料 / 同步 → 按返回键 pop 回上一级
+ *
+ * 示例：`[书架] → [书架, 详情(1)] → [书架, 详情(1), 阅读器]`
  */
 @Composable
 fun MainScreen(
@@ -87,56 +95,46 @@ fun MainScreen(
     pendingSyncPayload: String? = null,
 ) {
     val items = BottomNavItem.tabs
-    var selectedRoute by remember { mutableStateOf(Screen.Bookshelf.route) }
 
-    // 书籍详情导航状态
-    var selectedBookId by remember { mutableStateOf<Long?>(null) }
-    // 阅读器导航状态：(章节列表, 当前章节索引)
-    var readerState by remember { mutableStateOf<Pair<List<Chapter>, Int>?>(null) }
-    // 个人页导航状态
-    var showProfileActivity by remember { mutableStateOf(false) }
-    var showEditProfile by remember { mutableStateOf(false) }
-    // 同步页面导航状态
-    var showSyncScreen by remember { mutableStateOf(false) }
-    var syncPayloadJson by remember { mutableStateOf<String?>(null) }
+    // ===== 核心导航状态：用栈管理所有页面 =====
+    val navState = remember { NavigationState(AppPage.Bookshelf) }
 
-    // 当从 Cwriter 收到同步 Intent 时，自动打开同步页面
+    // 当从 Cwriter 收到同步 Intent 时，压入同步页面
     LaunchedEffect(pendingSyncPayload) {
         if (!pendingSyncPayload.isNullOrEmpty()) {
-            syncPayloadJson = pendingSyncPayload
-            showSyncScreen = true
+            navState.syncPayloadJson = pendingSyncPayload
+            navState.push(AppPage.SyncImport)
         }
     }
 
-    // 系统返回键拦截：按页面栈优先级依次消费，最底层才退出 APP
-    // 优先级：资料编辑 > 个人动态 > 阅读器 > 书籍详情 > 主 Tab（放行给系统）
-    BackHandler(enabled = showEditProfile) { showEditProfile = false }
-    BackHandler(enabled = showProfileActivity) { showProfileActivity = false }
-    BackHandler(enabled = showSyncScreen) { showSyncScreen = false }
-//    BackHandler(enabled = readerState != null) { readerState = null }
-    BackHandler(enabled = selectedBookId != null) { selectedBookId = null }
+    // ===== 统一返回键处理：栈非空则 pop，空（仅剩 Root Tab）则放行给系统退出 APP =====
+    BackHandler(enabled = navState.hasSubPages) {
+        val popped = navState.pop()
+        Log.d("MainScreen", "⬅️ 返回键: 弹出=${popped}, 当前栈=[${navState}]")
+    }
 
     Scaffold(
         modifier = Modifier.fillMaxSize(),
         containerColor = BackgroundGray,
-        contentWindowInsets = WindowInsets(0, 0, 0, 0), // 禁止Scaffold自动加状态栏padding（日志证明：innerPadding.top=34dp把内容推下94px）
-        // 仅在非详情页时显示底部导航栏
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
+        // 仅在根 Tab 层级（无次级页面）时显示底部导航栏
         bottomBar = {
-            if (selectedBookId == null && readerState == null && !showProfileActivity && !showEditProfile && !showSyncScreen) {
+            if (!navState.hasSubPages) {
                 BottomNavigationBar(
                     items = items,
-                    selectedRoute = selectedRoute,
+                    selectedRoute = navState.rootTab.toScreenRoute(),
                     userAvatarUrl = userAvatarUrl,
                     onItemSelected = { route ->
-                        selectedRoute = route
+                        val newRoot = route.toAppPage()
+                        Log.d("MainScreen", "🔄 切换Tab: ${navState.rootTab} → $newRoot")
+                        navState.replaceRoot(newRoot)
                     }
                 )
             }
         }
     ) { innerPadding ->
-        // 详情页和阅读器全屏覆盖，不应用 Scaffold 的 padding
-        // 普通 Tab 页仅保留 bottom（导航栏）padding，top（状态栏）由各页面自行处理
-        val isFullScreen = selectedBookId != null || readerState != null || showProfileActivity || showEditProfile || showSyncScreen
+        // 全屏页面（详情/阅读器等）不应用 Scaffold bottom padding
+        val isFullScreen = navState.hasSubPages
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -145,12 +143,13 @@ fun MainScreen(
                     else Modifier.padding(bottom = innerPadding.calculateBottomPadding())
                 )
         ) {
+            // 用当前页面作为 AnimatedContent 目标驱动转场动画
+            val currentPage = navState.current
             AnimatedContent(
-                targetState = readerState to (selectedBookId to (showProfileActivity to (showEditProfile to selectedRoute))),
+                targetState = currentPage,
                 transitionSpec = {
-                    // 进入详情页/阅读器：从右侧滑入 + 淡入
-                    // 返回：向左滑出 + 淡出
-                    if (targetState.first != null) {
+                    // 进入次级页面：右侧滑入；返回：左侧滑出
+                    if (!targetState.isRootTab()) {
                         slideInHorizontally(initialOffsetX = { it }) +
                                 fadeIn() togetherWith
                                 slideOutHorizontally(targetOffsetX = { -it }) +
@@ -163,68 +162,125 @@ fun MainScreen(
                     }
                 },
                 label = "pageTransition"
-            ) { (readerData, rest) ->
-                val (bookId, profileRest) = rest
-                val (showActivity, editRest) = profileRest
-                val (showEdit, route) = editRest
-
-                when {
-                    // 个人资料编辑页（最顶层）
-                    showEditProfile -> EditProfileScreen(
-                        onBack = { showEditProfile = false }
-                    )
-                    // 个人动态页
-                    showProfileActivity -> ProfileActivityScreen(
-                        isSelf = true,
-                        onBack = { showProfileActivity = false },
-                        onOpenEditProfile = { showEditProfile = true }
-                    )
-                    // 阅读器（最顶层）
-                    readerData != null -> {
-                        val (chapters, currentIdx) = readerData
-                        ReaderScreen(
-                            chapters = chapters,
-                            currentChapterIndex = currentIdx,
-                            bookTitle = "书籍",
-                            bookId = bookId?.toString() ?: "",
-                            onBack = { readerState = null },
-                            onChapterChange = { newIdx ->
-                                readerState = chapters to newIdx
-                            },
-                        )
-                    }
-                    // 书籍详情页（覆盖在书架之上）
-                    bookId != null -> {
-                        BookDetailScreen(
-                            bookId = bookId,
-                            onBack = { selectedBookId = null },
-                            onNavigateToReader = { chapters, chapterIndex ->
-                                readerState = chapters to chapterIndex
-                            }
-                        )
-                    }
-                    // 同步页面（覆盖在主界面之上）
-                    showSyncScreen -> SyncImportScreen(
-                        payloadJson = syncPayloadJson,
-                        onBack = { showSyncScreen = false }
-                    )
-                    // 书架 Tab
-                    route == Screen.Bookshelf.route -> BookshelfTab(
-                        onNavigateToDetail = { bid -> selectedBookId = bid },
-                        onNavigateToSync = {
-                            showSyncScreen = true
-                            syncPayloadJson = null  // 手动打开时无预设payload
-                        }
-                    )
-                    route == Screen.Bookstore.route -> BookstoreTab()
-                    route == Screen.Community.route -> CommunityTab()
-                    route == Screen.Profile.route -> ProfileScreen(
-                        onNavigateToProfile = { showProfileActivity = true }
-                    )
-                }
+            ) { page ->
+                RenderCurrentPage(
+                    page = page,
+                    navState = navState,
+                )
             }
         }
     }
+}
+
+/**
+ * 渲染当前页面（根据栈顶的 AppPage 分发）
+ */
+@Composable
+private fun RenderCurrentPage(
+    page: AppPage,
+    navState: NavigationState,
+) {
+    when (page) {
+        // ==================== 次级子页面 ====================
+
+        is AppPage.EditProfile -> EditProfileScreen(
+            onBack = { navState.pop() }
+        )
+
+        is AppPage.ProfileActivity -> ProfileActivityScreen(
+            isSelf = true,
+            onBack = { navState.pop() },
+            onOpenEditProfile = { navState.push(AppPage.EditProfile) }
+        )
+
+        is AppPage.Reader -> {
+            ReaderScreen(
+                chapters = page.chapters,
+                currentChapterIndex = page.chapterIndex,
+                bookTitle = page.bookTitle,
+                bookId = page.bookId,
+                onBack = { navState.pop() },
+                onChapterChange = { newIdx ->
+                    // 翻页/跨章：更新 Reader 页面的 chapterIndex，不产生新页面（不压栈）
+                    updateReaderChapterIndex(navState, newIdx)
+                },
+            )
+        }
+
+        is AppPage.BookDetail -> {
+            // 从栈中查找关联的 bookId 用于 Reader 的 bookId 参数
+            BookDetailScreen(
+                bookId = page.bookId,
+                onBack = { navState.pop() },
+                onNavigateToReader = { chapters, chapterIndex ->
+                    navState.push(AppPage.Reader(
+                        chapters = chapters,
+                        chapterIndex = chapterIndex,
+                        bookId = page.bookId.toString(),
+                        bookTitle = "书籍",
+                    ))
+                }
+            )
+        }
+
+        is AppPage.SyncImport -> SyncImportScreen(
+            payloadJson = navState.syncPayloadJson,
+            onBack = { navState.pop() }
+        )
+
+        // ==================== 顶级 Root Tab 页面 ====================
+
+        is AppPage.Bookshelf -> BookshelfTab(
+            onNavigateToDetail = { bid ->
+                navState.push(AppPage.BookDetail(bookId = bid))
+            },
+            onNavigateToSync = {
+                navState.syncPayloadJson = null
+                navState.push(AppPage.SyncImport)
+            }
+        )
+
+        is AppPage.Bookstore -> BookstoreTab()
+
+        is AppPage.Community -> CommunityTab()
+
+        is AppPage.Profile -> ProfileScreen(
+            onNavigateToProfile = { navState.push(AppPage.ProfileActivity) }
+        )
+    }
+}
+
+/**
+ * 更新阅读器中的章节索引（原地替换栈顶 Reader，不产生新入栈）
+ *
+ * 这是因为翻页/跨章是阅读器内部状态变化，不应产生新的历史记录。
+ * 用户按返回应该回到书籍详情页，而不是逐章回退。
+ */
+private fun updateReaderChapterIndex(navState: NavigationState, newIndex: Int) {
+    val current = navState.current
+    if (current is AppPage.Reader) {
+        navState.replaceTop(current.copy(chapterIndex = newIndex))
+    }
+}
+
+// ==================== 路由转换工具函数 ====================
+
+/** Screen 路由字符串 → AppPage */
+private fun String.toAppPage(): AppPage = when (this) {
+    Screen.Bookshelf.route -> AppPage.Bookshelf
+    Screen.Bookstore.route -> AppPage.Bookstore
+    Screen.Community.route -> AppPage.Community
+    Screen.Profile.route -> AppPage.Profile
+    else -> AppPage.DEFAULT_ROOT
+}
+
+/** AppPage → Screen 路由字符串（用于底部导航选中态） */
+private fun AppPage.toScreenRoute(): String = when (this) {
+    is AppPage.Bookshelf -> Screen.Bookshelf.route
+    is AppPage.Bookstore -> Screen.Bookstore.route
+    is AppPage.Community -> Screen.Community.route
+    is AppPage.Profile -> Screen.Profile.route
+    else -> Screen.Bookshelf.route  // 不应到达（次级页面无底部导航）
 }
 
 // ==================== 底部导航栏（参考"我的"页面样式：圆角+毛玻璃+FILL图标）====================
